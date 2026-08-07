@@ -1,0 +1,80 @@
+# Backend Dev's Notes — Authentication System
+
+Simple explanation of what was built and how it works. For future me (or teammates) trying to understand the auth flow.
+
+## 1. Sign Up
+
+- Uses Firebase's `createUserWithEmailAndPassword` to create a new account.
+- Right after the account is created, i save a **profile document** for that user in Firestore, under a `users` collection.
+- The document ID is the same as the user's Firebase UID — this makes it easy to look up "this logged-in user's data" later.
+- The profile stores: full name, email, role (student or lecturer), and a created timestamp.
+- Role is picked by the user on the signup form (toggle betien Student / Lecturer) — not hardcoded.
+- After signing up, the user is redirected to the login page (not straight into the dashboard).
+
+## 2. Log In
+
+- Uses `signInWithEmailAndPassword`.
+- After a successful login, i fetch that user's profile document from Firestore to check their `role`.
+- Instead of redirecting to a role-specific URL, i just redirect to `/dashboard`. A separate "router" component figures out which dashboard to actually show (see below).
+
+## 3. Dashboard Routing
+
+- `/dashboard` is one single route in the app.
+- A component called `DashboardRouter` checks the logged-in user's role from Firestore, and decides whether to render `StudentDashboard` or `LecturerDashboard`.
+- This means i don't need separate URLs like `/student-dashboard` and `/lecturer-dashboard` — one route handles both, based on who's logged in.
+
+## 4. Getting the User's Name
+
+- A custom hook called `useUserProfile` fetches the logged-in user's Firestore profile (name, role, etc.) so any dashboard can display a personalized ilcome message.
+- First name is pulled out of the full name by splitting on the space (e.g. `"John Doe"` → `"John"`).
+
+## 5. Forgot Password
+
+- Firebase has a built-in function, `sendPasswordResetEmail`, that handles the entire password reset process — sending the email AND hosting the page where the user picks a new password.
+- i just needed a small form asking for the user's email, then calling that function.
+- For security, Firebase won't tell you if an email exists in the system or not — it always looks like it succeeded either way. That's normal, not a bug.
+
+## 6. Logout
+
+- Uses Firebase's `signOut` function, then redirects to the login page.
+- Wrapped in a custom hook, `useLogout`, so any page/button can trigger it the same way.
+
+## 7. Staying Logged In After Refresh
+
+- Firebase automatically keeps users logged in across page refreshes — this works out of the box, no code needed.
+- What i DID need to build: a way to stop someone who ISN'T logged in from just typing `/dashboard` into the browser and seeing it anyway.
+
+## 8. AuthContext — "Is Someone Logged In?" (App-Wide)
+
+- One shared piece of state (`AuthContext`) tracks whether a user is logged in, everywhere in the app — instead of every component checking separately.
+- Wraps the whole app in `main.tsx` so any component can ask "is someone logged in?" using a hook called `useAuth()`.
+
+## 9. ProtectedRoute — The Bouncer
+
+- A wrapper component that goes around any page that should require login (like `/dashboard`).
+- Checks `AuthContext`. If nobody's logged in, it redirects to `/login`. If someone is, it shows the page normally.
+
+## 10. A Bug i Ran Into (and the lesson from it)
+
+- Got an "Invalid hook call" error that only shoid up in the browser console.
+- Cause: a hook (`useLogout()`) was being called at the very top of a file, outside of any component function — hooks can ONLY be called inside a component's function body, never at the top level of a file.
+- Fix: moved the hook call inside the actual component function.
+- **Lesson:** if you ever see "Invalid hook call," check that every hook (`useState`, `useEffect`, `useAuth`, custom hooks, etc.) is called inside a component or another hook — never outside one.
+
+## 11. Environment Variables
+
+- Firebase config values (API key, project ID, etc.) live in a `.env` file with the `VITE_` prefix, e.g. `VITE_FIREBASE_API_KEY`.
+- The `VITE_` prefix is required — Vite only exposes env vars to the frontend if they start with it.
+- These values aren't actually secret — Firebase is designed so this config can be public. Security comes from Firestore rules and Auth, not from hiding these.
+- Still good practice to keep `.env` out of git (`.gitignore`), so each environment can have its own copy.
+
+## 12. Git Workflow
+
+- Instead of pushing straight to `main`, changes go to a separate branch first:
+  ```
+  git checkout -b feature/auth-flow
+  git add .
+  git commit -m "message"
+  git push -u origin feature/auth-flow
+  ```
+- Then a Pull Request is opened on GitHub to review before merging into `main`.

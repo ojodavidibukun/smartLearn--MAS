@@ -6,6 +6,9 @@ import { Bell, LogOut, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { getUnreadNotificationsCount } from '@/data/mockData';
+import { useLogout } from "../hooks/useLogout";
+
+
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -13,15 +16,11 @@ interface MainLayoutProps {
 }
 
 export default function MainLayout({ children, showNav = true }: MainLayoutProps) {
+  const { logout } = useLogout();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [, setLocation] = useLocation();
   const unreadCount = getUnreadNotificationsCount();
 
-  const handleLogout = () => {
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('isLoggedIn');
-    setLocation('/');
-  };
 
   const navItems = [
     { label: 'Dashboard', href: '/dashboard' },
@@ -73,7 +72,7 @@ export default function MainLayout({ children, showNav = true }: MainLayoutProps
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={handleLogout}
+                  onClick={logout}
                   title="Logout"
                 >
                   <LogOut className="w-5 h-5" />
