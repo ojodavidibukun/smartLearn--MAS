@@ -6,23 +6,59 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import loginDummy from "./pages/Logindummy"; // dummy login page
+import signUp from "./pages/signUp";
 import StudentDashboard from "./pages/StudentDashboard";
 import LecturerDashboard from "./pages/LecturerDashboard";
 import Learning from "./pages/Learning";
 import Performance from "./pages/Performance";
 import Agents from "./pages/Agents";
+import { useEffect, useState } from "react";
+import { auth } from "./firebase/config";
+import { getDoc, doc, getFirestore } from "firebase/firestore";
+import ForgotPassword from "./components/ForgotPassword";
+import { ProtectedRoute } from "./pages/ProtectedRoute";
+import { useAuth } from "./contexts/AuthContext";
 
+const db = getFirestore();
+
+//function to handle Users' respective Role Dashboards
 function DashboardRouter() {
-  const role = localStorage.getItem('userRole') || 'student';
-  return role === 'lecturer' ? <LecturerDashboard /> : <StudentDashboard />;
+  const { user } = useAuth();
+  const [role, setRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRole = async () => {
+      if (!user) return;
+      const docSnap = await getDoc(doc(db, "users", user.uid));
+      if (docSnap.exists()) {
+        setRole(docSnap.data().role);
+      }
+      setLoading(false);
+    };
+    fetchRole();
+  }, [user]);
+
+  if (loading) return <p>Loading...</p>;
+  if (!role) return <p>No profile found.</p>;
+
+  return role === "lecturer" ? <LecturerDashboard /> : <StudentDashboard />;
 }
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
-      <Route path="/login" component={Login} />
-      <Route path="/dashboard" component={DashboardRouter} />
+      <Route path="/login" component={loginDummy} /> {/* replaced with dummy loginpage for now*/}
+      <Route path="/signup" component={signUp} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/dashboard">
+        {/*Protected routes to orevent authorized access */}
+        <ProtectedRoute>
+          <DashboardRouter />
+        </ProtectedRoute>
+      </Route>
       <Route path="/learning" component={Learning} />
       <Route path="/performance" component={Performance} />
       <Route path="/agents" component={Agents} />

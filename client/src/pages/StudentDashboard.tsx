@@ -14,18 +14,24 @@ import {
 import { ArrowRight, BookOpen, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useLocation } from 'wouter';
 import MainLayout from '@/layouts/MainLayout';
+import { useUserProfile } from "../hooks/useUserProfile";
+
+
 
 export default function StudentDashboard() {
   const [, setLocation] = useLocation();
   const unreadNotifications = mockNotifications.filter((n) => !n.read);
   const highPriorityRecs = mockRecommendations.filter((r) => r.priority === 'high');
+  const { profile, loading } = useUserProfile();
+
+  if (loading) return <p>Loading...</p>;
 
   return (
     <MainLayout>
       <div className="container py-8">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-1">Welcome, {mockStudent.name}</h1>
+          <h1 className="text-3xl font-bold mb-1">Welcome, {profile?.fullName?.split(" ")[0]}!</h1>
           <p className="text-muted-foreground">Track your progress and continue learning</p>
         </div>
 
