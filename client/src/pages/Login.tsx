@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, BookOpen, Users } from 'lucide-react';
+import { ArrowLeft, BookOpen, Users, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 export default function Login() {
@@ -30,6 +30,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const signInWithEmail = async (role: 'student' | 'lecturer') => {
     setError('');
@@ -51,7 +52,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary/30 to-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="container py-6">
         <Button
@@ -65,125 +66,113 @@ export default function Login() {
         </Button>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md">
-          {/* Logo & Title */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center mx-auto mb-4">
+      {/* Split screen */}
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-2">
+        {/* Left hero */}
+        <section className="hidden md:flex items-center justify-center p-12 bg-gradient-to-br from-primary/10 to-accent/5">
+          <div className="max-w-md">
+            <div className="w-20 h-20 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center mb-6 shadow-md">
               <span className="text-white font-bold text-2xl">SL</span>
             </div>
-            <h1 className="text-3xl font-bold mb-2">SmartLearn</h1>
-            <p className="text-muted-foreground">Sign in to your account</p>
-          </div>
+            <h2 className="text-3xl font-bold mb-3">Welcome back to SmartLearn</h2>
+            <p className="text-muted-foreground mb-6">A modern learning environment built for educators and students — pick a portal or sign in with your email.</p>
 
-          {/* Login Options */}
-          <div className="space-y-4">
-            {/* Student Login */}
-            <Card
-              className="p-6 cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all group"
-              onClick={handleStudentLogin}
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <BookOpen className="w-6 h-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold mb-1">Student Portal</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Access your courses and track progress
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStudentLogin();
-                    }}
-                    className="w-full"
-                  >
-                    Sign In as Student
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            {/* Lecturer Login */}
-            <Card
-              className="p-6 cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all group"
-              onClick={handleLecturerLogin}
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
-                  <Users className="w-6 h-6 text-accent" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold mb-1">Educator Portal</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    View class analytics and student insights
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleLecturerLogin();
-                    }}
-                    className="w-full"
-                    variant="outline"
-                  >
-                    Sign In as Educator
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            {/* Email / Password option */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Sign in with Email</h3>
-                <div>
-                  <button className="text-sm text-muted-foreground underline" onClick={() => setShowEmailForm(!showEmailForm)}>{showEmailForm ? 'Hide' : 'Use email'}</button>
-                </div>
-              </div>
-
-              {showEmailForm && (
-                <div className="space-y-3">
-                  {error && <div className="text-sm text-destructive">{error}</div>}
-                  <div>
-                    <Label>Email</Label>
-                    <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@school.edu" type="email" />
-                  </div>
-                  <div>
-                    <Label>Password</Label>
-                    <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button onClick={() => signInWithEmail('student')} disabled={loading} className="flex-1">{loading ? 'Signing...' : 'Sign in as Student'}</Button>
-                    <Button variant="outline" onClick={() => signInWithEmail('lecturer')} disabled={loading}>Educator</Button>
-                  </div>
-                </div>
-              )}
-            </Card>
-          </div>
-
-          {/* Info Box */}
-          <div className="mt-6 p-4 bg-primary/5 border border-primary/20 rounded-lg flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-            <p className="text-sm text-muted-foreground">
-              This is a demonstration environment. Use either portal to explore the system.
-            </p>
-            <div className="text-sm">
-              <button onClick={() => setLocation('/forgot-password')} className="text-primary underline-offset-4 hover:underline">Forgot password?</button>
+            <div className="rounded-lg p-4 bg-card/60 border">
+              <p className="text-sm">Explore courses, track progress, and get tailored recommendations.</p>
             </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-card/50 py-6">
-        <div className="container text-center text-sm text-muted-foreground">
-          <p>&copy; 2026 SmartLearn. All rights reserved.</p>
-        </div>
-      </footer>
+        {/* Right form column */}
+        <section className="flex items-center justify-center p-6">
+          <div className="w-full max-w-md">
+            <div className="text-center mb-6 md:mb-8">
+              <h1 className="text-2xl font-bold">Sign in to SmartLearn</h1>
+              <p className="text-sm text-muted-foreground mt-1">Secure access for students and educators</p>
+            </div>
+
+            <div className="space-y-4">
+              <Card className="p-6">
+                <div className="grid gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <BookOpen className="w-6 h-6 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold">Student Portal</h3>
+                      <p className="text-sm text-muted-foreground">Access your courses and track progress</p>
+                    </div>
+                    <div>
+                      <Button size="sm" onClick={(e) => { e.stopPropagation(); handleStudentLogin(); }}>Student</Button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center">
+                      <Users className="w-6 h-6 text-accent" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold">Educator Portal</h3>
+                      <p className="text-sm text-muted-foreground">View class analytics and student insights</p>
+                    </div>
+                    <div>
+                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleLecturerLogin(); }}>Educator</Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Email form card */}
+              <Card className="p-6">
+                <div className="mb-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold">Sign in with email</h4>
+                    <button className="text-sm text-muted-foreground underline" onClick={() => setShowEmailForm(!showEmailForm)}>{showEmailForm ? 'Hide' : 'Use email'}</button>
+                  </div>
+                </div>
+
+                {showEmailForm && (
+                  <form onSubmit={(e) => { e.preventDefault(); signInWithEmail('student'); }} className="space-y-4">
+                    {error && <div className="text-sm text-destructive">{error}</div>}
+
+                    <div>
+                      <Label className="mb-2">Email</Label>
+                      <div className="flex items-center gap-2 border border-input rounded-md px-2 py-1">
+                        <Mail className="w-5 h-5 text-muted-foreground" />
+                        <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@school.edu" type="email" className="border-0 p-0" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2">Password</Label>
+                      <div className="flex items-center gap-2 border border-input rounded-md px-2 py-1">
+                        <Lock className="w-5 h-5 text-muted-foreground" />
+                        <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type={showPassword ? 'text' : 'password'} className="border-0 p-0" />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="ml-2 text-muted-foreground">
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <Button className="flex-1" disabled={loading}>{loading ? 'Signing...' : 'Sign In'}</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setLocation('/forgot-password')}>Forgot?</Button>
+                    </div>
+                  </form>
+                )}
+              </Card>
+
+              <div className="text-center text-sm text-muted-foreground">
+                <p>Need an account? <button className="text-primary underline" onClick={() => setLocation('/signup')}>Create one</button></p>
+              </div>
+            </div>
+
+            <div className="mt-6 text-center text-sm text-muted-foreground">
+              <p>&copy; 2026 SmartLearn. All rights reserved.</p>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }
