@@ -74,7 +74,7 @@ export default function Login() {
               <span className="text-white font-bold text-2xl">SL</span>
             </div>
             <h2 className="text-3xl font-bold mb-3">Welcome back to SmartLearn</h2>
-            <p className="text-muted-foreground mb-6">A modern learning environment built for educators and students — pick a portal or sign in with your email.</p>
+            <p className="text-muted-foreground mb-6">A modern learning environment built for educators and students. Sign in with your email.</p>
 
             <div className="rounded-lg p-4 bg-card/60 border">
               <p className="text-sm">Explore courses, track progress, and get tailored recommendations.</p>
