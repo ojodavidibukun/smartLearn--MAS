@@ -1,8 +1,11 @@
 // SmartLearn MAS - Login Page
 // Production-focused authentication interface
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ArrowLeft, BookOpen, Users } from 'lucide-react';
 import { useLocation } from 'wouter';
 
@@ -19,6 +22,32 @@ export default function Login() {
     localStorage.setItem('userRole', 'lecturer');
     localStorage.setItem('isLoggedIn', 'true');
     setLocation('/dashboard');
+  };
+
+  // Email/password form state (keeps existing mock auth logic)
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const signInWithEmail = async (role: 'student' | 'lecturer') => {
+    setError('');
+    if (!email || !password) {
+      setError('Enter email and password');
+      return;
+    }
+    setLoading(true);
+    try {
+      // preserve existing mock behavior: store role in localStorage
+      localStorage.setItem('userRole', role);
+      localStorage.setItem('isLoggedIn', 'true');
+      setLocation('/dashboard');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to sign in');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -105,6 +134,35 @@ export default function Login() {
                   </Button>
                 </div>
               </div>
+            </Card>
+
+            {/* Email / Password option */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Sign in with Email</h3>
+                <div>
+                  <button className="text-sm text-muted-foreground underline" onClick={() => setShowEmailForm(!showEmailForm)}>{showEmailForm ? 'Hide' : 'Use email'}</button>
+                </div>
+              </div>
+
+              {showEmailForm && (
+                <div className="space-y-3">
+                  {error && <div className="text-sm text-destructive">{error}</div>}
+                  <div>
+                    <Label>Email</Label>
+                    <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@school.edu" type="email" />
+                  </div>
+                  <div>
+                    <Label>Password</Label>
+                    <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button onClick={() => signInWithEmail('student')} disabled={loading} className="flex-1">{loading ? 'Signing...' : 'Sign in as Student'}</Button>
+                    <Button variant="outline" onClick={() => signInWithEmail('lecturer')} disabled={loading}>Educator</Button>
+                  </div>
+                </div>
+              )}
             </Card>
           </div>
 
