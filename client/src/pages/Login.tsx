@@ -109,10 +109,13 @@ export default function Login() {
           </div>
 
           {/* Info Box */}
-          <div className="mt-8 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+          <div className="mt-6 p-4 bg-primary/5 border border-primary/20 rounded-lg flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
             <p className="text-sm text-muted-foreground">
               This is a demonstration environment. Use either portal to explore the system.
             </p>
+            <div className="text-sm">
+              <button onClick={() => setLocation('/forgot-password')} className="text-primary underline-offset-4 hover:underline">Forgot password?</button>
+            </div>
           </div>
         </div>
       </div>
