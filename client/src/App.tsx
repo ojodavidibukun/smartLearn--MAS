@@ -50,7 +50,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
-      <Route path="/login" component={loginDummy} /> {/* replaced with dummy loginpage for now*/}
+      <Route path="/login" component={Login} />
       <Route path="/signup" component={signUp} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/dashboard">
