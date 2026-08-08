@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, BookOpen, Users, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { auth } from "../firebase/config";
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { getDoc, doc, getFirestore } from 'firebase/firestore';
@@ -17,20 +17,8 @@ import { useLocation } from 'wouter';
 export default function Login() {
   const [, setLocation] = useLocation();
 
-  const handleStudentLogin = () => {
-    localStorage.setItem('userRole', 'student');
-    localStorage.setItem('isLoggedIn', 'true');
-    setLocation('/dashboard');
-  };
-
-  const handleLecturerLogin = () => {
-    localStorage.setItem('userRole', 'lecturer');
-    localStorage.setItem('isLoggedIn', 'true');
-    setLocation('/dashboard');
-  };
-
   // Email/password form state (keeps existing mock auth logic)
-  const [showEmailForm, setShowEmailForm] = useState(false);
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -103,74 +91,39 @@ export default function Login() {
             </div>
 
             <div className="space-y-4">
-              <Card className="p-6">
-                <div className="grid gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <BookOpen className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">Student Portal</h3>
-                      <p className="text-sm text-muted-foreground">Access your courses and track progress</p>
-                    </div>
-                    <div>
-                      <Button size="sm" onClick={(e) => { e.stopPropagation(); handleStudentLogin(); }}>Student</Button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center">
-                      <Users className="w-6 h-6 text-accent" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">Educator Portal</h3>
-                      <p className="text-sm text-muted-foreground">View class analytics and student insights</p>
-                    </div>
-                    <div>
-                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleLecturerLogin(); }}>Educator</Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
               {/* Email form card */}
               <Card className="p-6">
                 <div className="mb-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-semibold">Sign in with email</h4>
-                    <button className="text-sm text-muted-foreground underline" onClick={() => setShowEmailForm(!showEmailForm)}>{showEmailForm ? 'Hide' : 'Use email'}</button>
-                  </div>
+                  <h4 className="font-semibold">Sign in with email</h4>
                 </div>
 
-                {showEmailForm && (
-                  <form onSubmit={(e) => { e.preventDefault(); signInWithEmail('student'); }} className="space-y-4">
-                    {error && <div className="text-sm text-destructive">{error}</div>}
+                <form onSubmit={(e) => { e.preventDefault(); signInWithEmail(); }} className="space-y-4">
+                  {error && <div className="text-sm text-destructive">{error}</div>}
 
-                    <div>
-                      <Label className="mb-2">Email</Label>
-                      <div className="flex items-center gap-2 border border-input rounded-md px-2 py-1">
-                        <Mail className="w-5 h-5 text-muted-foreground" />
-                        <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@school.edu" type="email" className="border-0 p-0" />
-                      </div>
+                  <div>
+                    <Label className="mb-2">Email</Label>
+                    <div className="flex items-center gap-2 border border-input rounded-md px-2 py-1">
+                      <Mail className="w-5 h-5 text-muted-foreground" />
+                      <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@school.edu" type="email" className="border-0 p-0" />
                     </div>
+                  </div>
 
-                    <div>
-                      <Label className="mb-2">Password</Label>
-                      <div className="flex items-center gap-2 border border-input rounded-md px-2 py-1">
-                        <Lock className="w-5 h-5 text-muted-foreground" />
-                        <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type={showPassword ? 'text' : 'password'} className="border-0 p-0" />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="ml-2 text-muted-foreground">
-                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                        </button>
-                      </div>
+                  <div>
+                    <Label className="mb-2">Password</Label>
+                    <div className="flex items-center gap-2 border border-input rounded-md px-2 py-1">
+                      <Lock className="w-5 h-5 text-muted-foreground" />
+                      <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type={showPassword ? 'text' : 'password'} className="border-0 p-0" />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="ml-2 text-muted-foreground">
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
                     </div>
+                  </div>
 
-                    <div className="flex items-center justify-between gap-3">
-                      <Button className="flex-1" disabled={loading}>{loading ? 'Signing...' : 'Sign In'}</Button>
-                      <Button variant="ghost" size="sm" onClick={() => setLocation('/forgot-password')}>Forgot?</Button>
-                    </div>
-                  </form>
-                )}
+                  <div className="flex items-center justify-between gap-3">
+                    <Button className="flex-1" disabled={loading}>{loading ? 'Signing...' : 'Sign In'}</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setLocation('/forgot-password')}>Forgot?</Button>
+                  </div>
+                </form>
               </Card>
 
               <div className="text-center text-sm text-muted-foreground">
