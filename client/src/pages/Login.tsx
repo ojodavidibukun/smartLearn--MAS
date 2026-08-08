@@ -7,6 +7,11 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, BookOpen, Users, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { auth } from "../firebase/config";
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { getDoc, doc, getFirestore } from 'firebase/firestore';
+
+const db = getFirestore();
 import { useLocation } from 'wouter';
 
 export default function Login() {
@@ -32,7 +37,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const signInWithEmail = async (role: 'student' | 'lecturer') => {
+  const signInWithEmail = async () => {
     setError('');
     if (!email || !password) {
       setError('Enter email and password');
@@ -40,10 +45,16 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      // preserve existing mock behavior: store role in localStorage
-      localStorage.setItem('userRole', role);
-      localStorage.setItem('isLoggedIn', 'true');
-      setLocation('/dashboard');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      const docSnap = await getDoc(doc(db, "users", user.uid));
+      if (docSnap.exists()) {
+        // let AuthContext handle user state; just navigate to dashboard
+        setLocation('/dashboard');
+      } else {
+        setError('No profile found for this user.');
+      }
     } catch (err: any) {
       setError(err?.message || 'Failed to sign in');
     } finally {
