@@ -34,7 +34,7 @@ export default function CourseDetails() {
         ls.sort((a, b) => (a.order || 0) - (b.order || 0));
         // If current user is not the course lecturer, only show published lessons
         if (user?.uid !== c.lecturerId) {
-          ls = ls.filter((l) => !!l.published);
+          ls = ls.filter((l) => !!(l as any).published);
         }
         setLessons(ls);
         if (user?.uid) {
