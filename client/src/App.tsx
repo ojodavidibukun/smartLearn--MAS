@@ -10,6 +10,10 @@ import loginDummy from "./pages/Logindummy"; // dummy login page
 import signUp from "./pages/signUp";
 import StudentDashboard from "./pages/StudentDashboard";
 import LecturerDashboard from "./pages/LecturerDashboard";
+import LecturerProfile from "./pages/LecturerProfile";
+import DebugUserLookup from "./pages/DebugUserLookup";
+import CourseDetails from "./pages/CourseDetails";
+import LecturerCourseManager from "./pages/LecturerCourseManager";
 import Learning from "./pages/Learning";
 import Performance from "./pages/Performance";
 import Agents from "./pages/Agents";
@@ -59,9 +63,29 @@ function Router() {
           <DashboardRouter />
         </ProtectedRoute>
       </Route>
+      <Route path="/lecturer-profile">
+        <ProtectedRoute>
+          <LecturerProfile />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/course/:courseId">
+        <ProtectedRoute>
+          <CourseDetails />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/lecturer/manage-courses">
+        <ProtectedRoute>
+          <LecturerCourseManager />
+        </ProtectedRoute>
+      </Route>
       <Route path="/learning" component={Learning} />
       <Route path="/performance" component={Performance} />
       <Route path="/agents" component={Agents} />
+      <Route path="/debug/user-lookup">
+        <ProtectedRoute>
+          <DebugUserLookup />
+        </ProtectedRoute>
+      </Route>
       <Route path="/404" component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
