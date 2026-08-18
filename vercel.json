@@ -3,6 +3,6 @@
   "installCommand": "pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm build",
   "routes": [
-    { "src": "(.*)", "dest": "/index.html" }
+    { "src": "(.*)", "dist": "/index.html" }
   ]
 }
