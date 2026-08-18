@@ -64,12 +64,18 @@ export default function signUp(){
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            await setDoc(doc(db, "users", user.uid), {
+            const userData: any = {
                 fullName: fullName,
                 email: email,
                 role: role,
                 createdAt: serverTimestamp(),
-            });
+            };
+
+            if (role === 'lecturer') {
+                userData.offeredCourses = [];
+            }
+
+            await setDoc(doc(db, "users", user.uid), userData);
 
             setSuccess("Account created successfully! Redirecting to login...");
             setTimeout(() => {

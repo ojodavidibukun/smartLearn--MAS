@@ -4,215 +4,209 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ScatterChart,
-  Scatter,
-} from 'recharts';
-import { mockCourses, mockStudentPerformance } from '@/data/mockData';
-import { AlertCircle, TrendingUp, Users, BookOpen } from 'lucide-react';
+import { AlertCircle, Users, BookOpen, UserCog } from 'lucide-react';
 import MainLayout from '@/layouts/MainLayout';
+import { useLocation } from 'wouter';
+import { useAuth } from '@/contexts/AuthContext';
+import { useEffect, useState } from 'react';
+import { db } from '@/firebase/config';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { subscribeCoursesByLecturer, getCourseByLecturerAndCode } from '@/lib/courses';
 
-// Mock class data
-const classData = {
-  totalStudents: 45,
-  activeToday: 38,
-  averageEngagement: 82,
-  completionRate: 76,
+type Enrollment = {
+  id: string;
+  studentId: string;
+  studentName?: string;
+  studentEmail?: string;
+  courseCode: string;
+  courseTitle: string;
+  lecturerId: string;
 };
 
-const performanceTrend = [
-  { week: 'Week 1', average: 68, median: 70 },
-  { week: 'Week 2', average: 71, median: 72 },
-  { week: 'Week 3', average: 74, median: 75 },
-  { week: 'Week 4', average: 76, median: 77 },
-];
-
-const studentPerformanceData = [
-  { name: 'David Okafor', engagement: 85, completion: 92, attendance: 95 },
-  { name: 'Daniel Okoye', engagement: 72, completion: 78, attendance: 88 },
-  { name: 'Chinedu Eze', engagement: 45, completion: 52, attendance: 65 },
-  { name: 'Joy Nwankwo', engagement: 88, completion: 95, attendance: 98 },
-  { name: 'Tunde Adebayo', engagement: 62, completion: 68, attendance: 75 },
-  { name: 'Musa Ibrahim', engagement: 92, completion: 98, attendance: 100 },
-];
-
-const atRiskStudents = [
-  { id: 1, name: 'Chinedu Eze', risk: 'High', reason: 'Low engagement and completion rate' },
-  { id: 2, name: 'Daniel Okoye', risk: 'Medium', reason: 'Declining attendance' },
-  { id: 3, name: 'Amina Bello', risk: 'Medium', reason: 'Recent performance dip' },
-];
-
-const courseStats = [
-  { name: 'Digital Logic', students: 45, avgScore: 76, completion: 82 },
-  { name: 'Data Structures', students: 52, avgScore: 72, completion: 78 },
-  { name: 'Web Development', students: 38, avgScore: 81, completion: 88 },
-  { name: 'Database Systems', students: 41, avgScore: 74, completion: 75 },
-];
-
 export default function LecturerDashboard() {
+  const [, setLocation] = useLocation();
+  const { user } = useAuth();
+
+  const [courses, setCourses] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [lessonsByCourse, setLessonsByCourse] = useState<Record<string, any[]>>({});
+  const [progressByEnrollment, setProgressByEnrollment] = useState<Record<string, { completed: number; lastUpdated?: any }>>({});
+
+  // subscribe to courses
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = subscribeCoursesByLecturer(user.uid, (list) => {
+      setCourses(list || []);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // subscribe to enrollments for this lecturer
+  useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(collection(db, 'enrollments'), where('lecturerId', '==', user.uid));
+    const unsub = onSnapshot(q, async (snap) => {
+      const docs: Enrollment[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as Enrollment));
+      setEnrollments(docs);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // subscribe to lessons per course (published state included)
+  useEffect(() => {
+    if (!courses.length) return;
+    const unsubList: Array<() => void> = [];
+    courses.forEach((c) => {
+      const lessonsCol = collection(db, 'courses', c.id, 'lessons');
+      const unsub = onSnapshot(lessonsCol, (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        setLessonsByCourse((prev) => ({ ...prev, [c.id]: items }));
+      });
+      unsubList.push(unsub);
+    });
+    return () => unsubList.forEach((u) => u());
+  }, [courses]);
+
+  // subscribe to courseProgress per enrollment
+  useEffect(() => {
+    if (!enrollments.length || !courses.length) return;
+
+    const unsubList: Array<() => void> = [];
+
+    enrollments.forEach((enr) => {
+      // find course id for this enrollment via courseCode and lecturerId
+      const course = courses.find((c) => c.courseCode === enr.courseCode && c.lecturerId === enr.lecturerId);
+      if (!course || !course.id) return;
+      const progressDoc = doc(db, 'courseProgress', `${course.id}_${enr.studentId}`);
+      const unsub = onSnapshot(progressDoc, (snap) => {
+        const data = snap.exists() ? (snap.data() as any) : { completedLessons: [] };
+        setProgressByEnrollment((prev) => ({ ...prev, [enr.id]: { completed: Array.isArray(data.completedLessons) ? data.completedLessons.length : 0, lastUpdated: data.updatedAt } }));
+      });
+      unsubList.push(unsub);
+    });
+
+    return () => unsubList.forEach((u) => u());
+  }, [enrollments, courses]);
+
+  // Derived metrics
+  const totalCourses = courses.length;
+  const uniqueStudentIds = Array.from(new Set(enrollments.map((e) => e.studentId)));
+  const totalStudents = uniqueStudentIds.length;
+  const totalPublishedLessons = Object.values(lessonsByCourse).reduce((sum, arr) => sum + arr.filter((l:any)=>!!l.published).length, 0);
+  const totalMaterials = Object.values(lessonsByCourse).reduce((sum, arr) => sum + arr.filter((l:any)=>Array.isArray(l.materials)?l.materials.length:0).reduce((s:number,m:any)=>s+m,0), 0);
+
+  // compute overall completion rate across enrollments where course published lessons > 0
+  const completionRates: number[] = enrollments.map((enr) => {
+    const course = courses.find((c) => c.courseCode === enr.courseCode && c.lecturerId === enr.lecturerId);
+    if (!course || !course.id) return 0;
+    const lessons = lessonsByCourse[course.id] || [];
+    const published = lessons.filter((l:any)=>!!l.published).length;
+    if (published === 0) return 0;
+    const prog = progressByEnrollment[enr.id];
+    const completed = prog ? prog.completed : 0;
+    return Math.round((completed / published) * 100);
+  }).filter((n) => !isNaN(n));
+
+  const overallCompletion = completionRates.length ? Math.round(completionRates.reduce((a,b)=>a+b,0)/completionRates.length) : 0;
+  const activeProgressing = completionRates.filter((p) => p > 0 && p < 100).length;
+  const lowOrNoProgress = completionRates.filter((p) => p === 0).length;
+
+  // Helper to compute student row data
+  const studentRows = enrollments.map((enr) => {
+    const course = courses.find((c) => c.courseCode === enr.courseCode && c.lecturerId === enr.lecturerId);
+    const lessons = course?.id ? (lessonsByCourse[course.id] || []) : [];
+    const published = lessons.filter((l:any)=>!!l.published).length;
+    const prog = progressByEnrollment[enr.id];
+    const completed = prog ? prog.completed : 0;
+    const percent = published ? Math.round((completed / published) * 100) : 0;
+    const status = percent === 0 ? 'Not Started' : percent < 50 ? 'Needs Attention' : 'On Track';
+    return {
+      enrollmentId: enr.id,
+      studentId: enr.studentId,
+      studentName: enr.studentName || 'Student',
+      studentEmail: (enr as any).studentEmail || '',
+      courseCode: enr.courseCode,
+      courseTitle: enr.courseTitle,
+      completed,
+      published,
+      percent,
+      lastUpdated: prog ? prog.lastUpdated : null,
+      status,
+    };
+  });
+
   return (
     <MainLayout>
       <div className="container py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-1">Class Overview</h1>
-          <p className="text-muted-foreground">Monitor student progress and engagement across your courses</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-1">Class Overview</h1>
+            <p className="text-muted-foreground">Monitor student progress and engagement across your courses</p>
+          </div>
+          <div>
+            <Button onClick={() => setLocation('/lecturer/manage-courses')} className="ml-2">Manage Course Content</Button>
+          </div>
         </div>
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card className="p-6">
+            <p className="text-sm text-muted-foreground mb-2">Total Courses</p>
+            <p className="text-3xl font-bold">{totalCourses}</p>
+          </Card>
+          <Card className="p-6">
             <p className="text-sm text-muted-foreground mb-2">Total Students</p>
-            <p className="text-3xl font-bold">{classData.totalStudents}</p>
+            <p className="text-3xl font-bold">{totalStudents}</p>
           </Card>
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Active Today</p>
-            <p className="text-3xl font-bold">{classData.activeToday}</p>
+            <p className="text-sm text-muted-foreground mb-2">Published Lessons</p>
+            <p className="text-3xl font-bold">{totalPublishedLessons}</p>
           </Card>
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Avg Engagement</p>
-            <p className="text-3xl font-bold">{classData.averageEngagement}%</p>
-          </Card>
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Completion Rate</p>
-            <p className="text-3xl font-bold">{classData.completionRate}%</p>
+            <p className="text-sm text-muted-foreground mb-2">Overall Completion</p>
+            <p className="text-3xl font-bold">{overallCompletion}%</p>
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Performance Trend */}
-          <Card className="p-6 lg:col-span-2">
-            <h3 className="font-semibold mb-4">Class Performance Trend</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={performanceTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="week" stroke="var(--muted-foreground)" />
-                <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '0.5rem',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="average"
-                  stroke="var(--primary)"
-                  strokeWidth={2}
-                  name="Average"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="median"
-                  stroke="var(--accent)"
-                  strokeWidth={2}
-                  name="Median"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-
-          {/* At-Risk Students */}
-          <Card className="p-6">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-destructive" />
-              At-Risk Students
-            </h3>
-            <div className="space-y-3">
-              {atRiskStudents.map((student) => (
-                <div key={student.id} className="p-3 bg-destructive/5 border border-destructive/20 rounded-lg">
-                  <p className="text-sm font-medium">{student.name}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{student.reason}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-
-        {/* Course Statistics */}
+        {/* Student Performance Table */}
         <Card className="p-6 mb-8">
-          <h3 className="font-semibold mb-4">Course Statistics</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {courseStats.map((course) => (
-              <div key={course.name} className="p-4 bg-secondary/30 rounded-lg border border-border">
-                <p className="text-sm font-medium mb-3">{course.name}</p>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Students:</span>
-                    <span className="font-medium">{course.students}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Avg Score:</span>
-                    <span className="font-medium">{course.avgScore}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Completion:</span>
-                    <span className="font-medium">{course.completion}%</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Student Monitoring</h3>
+            <div className="text-sm text-muted-foreground">Showing students enrolled in your courses</div>
           </div>
-        </Card>
 
-        {/* Student Performance Matrix */}
-        <Card className="p-6 mb-8">
-          <h3 className="font-semibold mb-4">Student Performance Matrix</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Student</th>
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Engagement</th>
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Completion</th>
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Attendance</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Email</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Course</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Completed</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Total Lessons</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">% Complete</th>
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {studentPerformanceData.map((student) => {
-                  const status =
-                    student.engagement < 60 || student.completion < 60
-                      ? 'At Risk'
-                      : student.engagement > 85 && student.completion > 90
-                        ? 'Excellent'
-                        : 'On Track';
-                  const statusColor =
-                    status === 'At Risk'
-                      ? 'bg-destructive/10 text-destructive'
-                      : status === 'Excellent'
-                        ? 'bg-accent/10 text-accent'
-                        : 'bg-primary/10 text-primary';
-
-                  return (
-                    <tr key={student.name} className="border-b border-border hover:bg-secondary/30 transition-colors">
-                      <td className="py-3 px-4">{student.name}</td>
-                      <td className="py-3 px-4">{student.engagement}%</td>
-                      <td className="py-3 px-4">{student.completion}%</td>
-                      <td className="py-3 px-4">{student.attendance}%</td>
-                      <td className="py-3 px-4">
-                        <Badge className={statusColor}>{status}</Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {studentRows.map((s) => (
+                  <tr key={s.enrollmentId} className="border-b border-border hover:bg-secondary/30 transition-colors">
+                    <td className="py-3 px-4">{s.studentName}</td>
+                    <td className="py-3 px-4">{s.studentEmail || ''}</td>
+                    <td className="py-3 px-4">{s.courseTitle} <div className="text-xs text-muted-foreground">{s.courseCode}</div></td>
+                    <td className="py-3 px-4">{s.completed}</td>
+                    <td className="py-3 px-4">{s.published}</td>
+                    <td className="py-3 px-4">{s.percent}%</td>
+                    <td className="py-3 px-4"><Badge>{s.status}</Badge></td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </Card>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Button variant="outline" className="h-12 gap-2">
             <Users className="w-4 h-4" />
             Send Class Announcement
@@ -222,8 +216,11 @@ export default function LecturerDashboard() {
             View Course Materials
           </Button>
           <Button variant="outline" className="h-12 gap-2">
-            <TrendingUp className="w-4 h-4" />
             Export Report
+          </Button>
+          <Button variant="default" className="h-12 gap-2" onClick={() => setLocation('/lecturer-profile')}>
+            <UserCog className="w-4 h-4" />
+            Lecturer Profile
           </Button>
         </div>
       </div>
