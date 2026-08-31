@@ -1,4 +1,4 @@
-import { addDoc, collection, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore';
+import { addDoc, collection, getDocs, onSnapshot, query, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import type { Notification } from '@/types';
 
@@ -7,7 +7,15 @@ const readNotificationsKey = (studentId: string) => `smartlearn.readNotification
 type StudentAnnouncement = Notification & {
   audience: 'students';
   lecturerId: string;
+  courseId?: string;
+  targetStudentIds?: string[];
 };
+
+export function buildCourseNotificationTargets(courseId: string, enrollments: Array<{ studentId: string; courseId?: string }>) {
+  return enrollments
+    .filter((enrollment) => enrollment.courseId === courseId)
+    .map((enrollment) => enrollment.studentId);
+}
 
 function getReadIds(studentId: string): Set<string> {
   try {
@@ -27,10 +35,14 @@ export async function createStudentAnnouncement(
   title: string,
   message: string,
   actionUrl = '/dashboard',
+  courseId?: string,
+  targetStudentIds?: string[],
 ) {
   await addDoc(collection(db, 'notifications'), {
     audience: 'students',
     lecturerId,
+    courseId: courseId || null,
+    targetStudentIds: targetStudentIds || [],
     title,
     message,
     type: 'info',
@@ -56,13 +68,18 @@ export function subscribeStudentAnnouncements(
       const notifications = snapshot.docs
         .map((document) => {
           const data = document.data() as Omit<StudentAnnouncement, 'id' | 'read'>;
+          const targetStudentIds = Array.isArray(data.targetStudentIds) ? data.targetStudentIds : [];
+          const isRelevant = !data.courseId || !targetStudentIds.length || targetStudentIds.includes(studentId);
+          if (!isRelevant) return null;
           return {
             id: document.id,
             ...data,
             read: readIds.has(document.id),
           } as Notification;
         })
-        .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')));
+        .filter((item): item is Notification => item !== null);
+
+      notifications.sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')));
       onChange(notifications);
     },
     onError,

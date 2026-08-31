@@ -3,6 +3,11 @@ export type LecturerCourseInput = {
   title?: string;
 };
 
+export type AcademicPeriod = {
+  semester: string;
+  session: string;
+};
+
 export type NormalizedCourse = {
   code: string;
   title: string;
@@ -18,6 +23,25 @@ export function normalizeCourseEntry(course: LecturerCourseInput): NormalizedCou
     title,
     key: `${code}|${title}`,
   };
+}
+
+export function normalizeAcademicPeriod(period: Partial<AcademicPeriod>): AcademicPeriod {
+  const semester = (period.semester ?? 'First Semester').trim() || 'First Semester';
+  const session = (period.session ?? '2026/2027').trim() || '2026/2027';
+
+  return {
+    semester,
+    session,
+  };
+}
+
+export function buildEnrollmentId(
+  studentId: string,
+  lecturerId: string,
+  courseCode: string,
+  _academicPeriod?: AcademicPeriod,
+) {
+  return `${studentId}_${lecturerId}_${courseCode}`;
 }
 
 export function matchesCourseSearch(course: NormalizedCourse, searchText: string) {

@@ -41,6 +41,35 @@ export async function getCourseById(courseId: string): Promise<Course | null> {
   return { id: d.id, ...(d.data() as any) } as Course;
 }
 
+export async function notifyCourseSubscribers(
+  courseId: string,
+  title: string,
+  code: string,
+  message: string,
+  actionUrl = `/course/${courseId}`,
+) {
+  const courseSnapshot = await getDoc(doc(db, 'courses', courseId));
+  if (!courseSnapshot.exists()) return;
+
+  const course = courseSnapshot.data() as Course;
+  const enrollmentsSnapshot = await getDocs(collection(db, 'enrollments'));
+  const targetStudentIds = enrollmentsSnapshot.docs
+    .filter((docSnap) => docSnap.data().courseId === courseId)
+    .map((docSnap) => docSnap.data().studentId)
+    .filter(Boolean);
+
+  if (!targetStudentIds.length) return;
+
+  await createStudentAnnouncement(
+    course.lecturerId,
+    title,
+    message,
+    actionUrl,
+    courseId,
+    targetStudentIds,
+  );
+}
+
 export async function ensureCourseExists(course: Course): Promise<string> {
   // Try to find existing by lecturerId+code
   const existing = await getCourseByLecturerAndCode(course.lecturerId, course.courseCode);
@@ -57,10 +86,19 @@ export async function ensureCourseExists(course: Course): Promise<string> {
   });
 
   try {
+    const enrollmentsSnapshot = await getDocs(collection(db, 'enrollments'));
+    const targetStudentIds = enrollmentsSnapshot.docs
+      .filter((docSnap) => docSnap.data().courseId === ref.id)
+      .map((docSnap) => docSnap.data().studentId)
+      .filter(Boolean);
+
     await createStudentAnnouncement(
       course.lecturerId,
       'New course available',
       `${course.courseTitle} (${course.courseCode}) is now available for enrollment.`,
+      '/student-dashboard',
+      ref.id,
+      targetStudentIds,
     );
   } catch (error) {
     console.error('Course created, but announcement could not be saved:', error);
@@ -88,6 +126,23 @@ export async function addLesson(courseId: string, lesson: Lesson) {
     order: lesson.order || 0,
     createdAt: serverTimestamp(),
   });
+
+  try {
+    const courseSnapshot = await getDoc(doc(db, 'courses', courseId));
+    if (courseSnapshot.exists()) {
+      const course = courseSnapshot.data() as Course;
+      await notifyCourseSubscribers(
+        courseId,
+        course.courseTitle,
+        course.courseCode,
+        `A new lesson, ${lesson.title}, has been added to ${course.courseTitle} (${course.courseCode}).`,
+        `/course/${courseId}`,
+      );
+    }
+  } catch (error) {
+    console.error('Lesson added, but announcement could not be saved:', error);
+  }
+
   return ref.id;
 }
 
@@ -123,14 +178,30 @@ export async function updateLesson(courseId: string, lessonId: string, patch: Pa
   if (patch.published === true && lessonSnapshot.data()?.published !== true && courseSnapshot.exists()) {
     const course = courseSnapshot.data() as Course;
     try {
-      await createStudentAnnouncement(
-        course.lecturerId,
+      await notifyCourseSubscribers(
+        courseId,
         'New lesson published',
+        course.courseCode,
         `A new lesson is available in ${course.courseTitle} (${course.courseCode}).`,
         `/course/${courseId}`,
       );
     } catch (error) {
       console.error('Lesson published, but announcement could not be saved:', error);
+    }
+  }
+
+  if (courseSnapshot.exists() && patch.title && patch.title !== lessonSnapshot.data()?.title) {
+    const course = courseSnapshot.data() as Course;
+    try {
+      await notifyCourseSubscribers(
+        courseId,
+        'Course updated',
+        course.courseCode,
+        `${course.courseTitle} (${course.courseCode}) was updated. Check the latest course content.`,
+        `/course/${courseId}`,
+      );
+    } catch (error) {
+      console.error('Course updated, but announcement could not be saved:', error);
     }
   }
 }

@@ -8,7 +8,7 @@ import { AlertCircle, Users, BookOpen, UserCog } from 'lucide-react';
 import MainLayout from '@/layouts/MainLayout';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { db } from '@/firebase/config';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { subscribeCoursesByLecturer, getCourseByLecturerAndCode } from '@/lib/courses';
@@ -21,6 +21,9 @@ type Enrollment = {
   courseCode: string;
   courseTitle: string;
   lecturerId: string;
+  semester?: string;
+  session?: string;
+  academicYear?: string;
 };
 
 export default function LecturerDashboard() {
@@ -29,6 +32,8 @@ export default function LecturerDashboard() {
 
   const [courses, setCourses] = useState<any[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [selectedSemester, setSelectedSemester] = useState('All');
+  const [selectedSession, setSelectedSession] = useState('All');
   const [lessonsByCourse, setLessonsByCourse] = useState<Record<string, any[]>>({});
   const [progressByEnrollment, setProgressByEnrollment] = useState<Record<string, { completed: number; lastUpdated?: any }>>({});
 
@@ -88,15 +93,35 @@ export default function LecturerDashboard() {
     return () => unsubList.forEach((u) => u());
   }, [enrollments, courses]);
 
+  const semesterOptions = useMemo(
+    () => Array.from(new Set(enrollments.map((e) => e.semester).filter((value): value is string => !!value))).sort(),
+    [enrollments],
+  );
+
+  const sessionOptions = useMemo(
+    () => Array.from(new Set(enrollments.map((e) => e.session).filter((value): value is string => !!value))).sort(),
+    [enrollments],
+  );
+
+  const filteredEnrollments = useMemo(
+    () =>
+      enrollments.filter((enr) => {
+        const matchesSemester = selectedSemester === 'All' || enr.semester === selectedSemester;
+        const matchesSession = selectedSession === 'All' || enr.session === selectedSession;
+        return matchesSemester && matchesSession;
+      }),
+    [enrollments, selectedSemester, selectedSession],
+  );
+
   // Derived metrics
   const totalCourses = courses.length;
-  const uniqueStudentIds = Array.from(new Set(enrollments.map((e) => e.studentId)));
+  const uniqueStudentIds = Array.from(new Set(filteredEnrollments.map((e: Enrollment) => e.studentId)));
   const totalStudents = uniqueStudentIds.length;
   const totalPublishedLessons = Object.values(lessonsByCourse).reduce((sum, arr) => sum + arr.filter((l:any)=>!!l.published).length, 0);
   const totalMaterials = Object.values(lessonsByCourse).reduce((sum, arr) => sum + arr.filter((l:any)=>Array.isArray(l.materials)?l.materials.length:0).reduce((s:number,m:any)=>s+m,0), 0);
 
   // compute overall completion rate across enrollments where course published lessons > 0
-  const completionRates: number[] = enrollments.map((enr) => {
+  const completionRates: number[] = filteredEnrollments.map((enr: Enrollment) => {
     const course = courses.find((c) => c.courseCode === enr.courseCode && c.lecturerId === enr.lecturerId);
     if (!course || !course.id) return 0;
     const lessons = lessonsByCourse[course.id] || [];
@@ -105,14 +130,14 @@ export default function LecturerDashboard() {
     const prog = progressByEnrollment[enr.id];
     const completed = prog ? prog.completed : 0;
     return Math.round((completed / published) * 100);
-  }).filter((n) => !isNaN(n));
+  }).filter((n: number) => !isNaN(n));
 
   const overallCompletion = completionRates.length ? Math.round(completionRates.reduce((a,b)=>a+b,0)/completionRates.length) : 0;
   const activeProgressing = completionRates.filter((p) => p > 0 && p < 100).length;
   const lowOrNoProgress = completionRates.filter((p) => p === 0).length;
 
   // Helper to compute student row data
-  const studentRows = enrollments.map((enr) => {
+  const studentRows = filteredEnrollments.map((enr: Enrollment) => {
     const course = courses.find((c) => c.courseCode === enr.courseCode && c.lecturerId === enr.lecturerId);
     const lessons = course?.id ? (lessonsByCourse[course.id] || []) : [];
     const published = lessons.filter((l:any)=>!!l.published).length;
@@ -168,6 +193,42 @@ export default function LecturerDashboard() {
           </Card>
         </div>
 
+        <Card className="p-4 mb-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end">
+            <div className="flex-1">
+              <label className="mb-2 block text-sm font-medium">Semester</label>
+              <select
+                value={selectedSemester}
+                onChange={(event) => setSelectedSemester(event.target.value)}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="All">All semesters</option>
+                {semesterOptions.map((semester: string) => (
+                  <option key={semester} value={semester}>
+                    {semester}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex-1">
+              <label className="mb-2 block text-sm font-medium">Session</label>
+              <select
+                value={selectedSession}
+                onChange={(event) => setSelectedSession(event.target.value)}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="All">All sessions</option>
+                {sessionOptions.map((session: string) => (
+                  <option key={session} value={session}>
+                    {session}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </Card>
+
         {/* Student Performance Table */}
         <Card className="p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
@@ -189,7 +250,7 @@ export default function LecturerDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {studentRows.map((s) => (
+                {studentRows.map((s: any) => (
                   <tr key={s.enrollmentId} className="border-b border-border hover:bg-secondary/30 transition-colors">
                     <td className="py-3 px-4">{s.studentName}</td>
                     <td className="py-3 px-4">{s.studentEmail || ''}</td>

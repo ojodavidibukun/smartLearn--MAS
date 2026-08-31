@@ -10,7 +10,12 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/firebase/config';
 import { collection, doc, getDocs, query, setDoc, where, serverTimestamp } from 'firebase/firestore';
-import { matchesCourseSearch, normalizeCourseEntry } from '@/lib/courseEnrollment';
+import {
+  buildEnrollmentId,
+  matchesCourseSearch,
+  normalizeAcademicPeriod,
+  normalizeCourseEntry,
+} from '@/lib/courseEnrollment';
 import { getCourseByLecturerAndCode } from '@/lib/courses';
 
 interface LecturerCourseOffer {
@@ -38,6 +43,9 @@ export default function StudentDashboard() {
   const [selectedCourses, setSelectedCourses] = useState<Record<string, boolean>>({});
   const [savingEnrollments, setSavingEnrollments] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [academicPeriod, setAcademicPeriod] = useState(() =>
+    normalizeAcademicPeriod({ semester: 'First Semester', session: '2026/2027' }),
+  );
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -131,7 +139,7 @@ export default function StudentDashboard() {
         const canonicalCourse = await getCourseByLecturerAndCode(lecturerId, courseCode);
         if (!canonicalCourse?.id) continue;
 
-        const enrollmentId = `${user.uid}_${lecturerId}_${courseCode}`;
+        const enrollmentId = buildEnrollmentId(user.uid, lecturerId, courseCode, academicPeriod);
         await setDoc(doc(db, 'enrollments', enrollmentId), {
           studentId: user.uid,
           courseId: canonicalCourse.id,
@@ -140,6 +148,10 @@ export default function StudentDashboard() {
           lecturerName: lecturer.lecturerName,
           courseCode: course.code,
           courseTitle: course.title,
+          semester: academicPeriod.semester,
+          session: academicPeriod.session,
+          academicYear: academicPeriod.session,
+          status: 'active',
           createdAt: serverTimestamp(),
         });
       }
@@ -297,6 +309,45 @@ export default function StudentDashboard() {
 
             <Card className="p-5">
               <h2 className="mb-4 text-lg font-semibold">Register selected courses</h2>
+
+              <div className="mb-4 space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Semester</label>
+                  <select
+                    value={academicPeriod.semester}
+                    onChange={(event) =>
+                      setAcademicPeriod((current) => ({
+                        ...current,
+                        semester: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option value="First Semester">First Semester</option>
+                    <option value="Second Semester">Second Semester</option>
+                    <option value="Summer Semester">Summer Semester</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Session</label>
+                  <select
+                    value={academicPeriod.session}
+                    onChange={(event) =>
+                      setAcademicPeriod((current) => ({
+                        ...current,
+                        session: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option value="2026/2027">2026/2027</option>
+                    <option value="2027/2028">2027/2028</option>
+                    <option value="2028/2029">2028/2029</option>
+                  </select>
+                </div>
+              </div>
+
               <Button onClick={handleEnrollSelectedCourses} className="w-full" disabled={savingEnrollments}>
                 {savingEnrollments ? 'Saving enrollment...' : 'Enroll selected courses'}
               </Button>
