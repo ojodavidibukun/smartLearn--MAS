@@ -44,7 +44,7 @@ export default function StudentDashboard() {
       if (!user?.uid) return;
 
       try {
-        const usersSnapshot = await getDocs(collection(db, 'users'));
+        const usersSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'lecturer')));
         const lecturers = usersSnapshot.docs
           .filter((userDoc) => userDoc.data().role === 'lecturer')
           .map((userDoc) => {
@@ -129,9 +129,13 @@ export default function StudentDashboard() {
 
         if (!lecturer || !course) continue;
 
+        const canonicalCourse = await getCourseByLecturerAndCode(lecturerId, courseCode);
+        if (!canonicalCourse?.id) continue;
+
         const enrollmentId = `${user.uid}_${lecturerId}_${courseCode}`;
         await setDoc(doc(db, 'enrollments', enrollmentId), {
           studentId: user.uid,
+          courseId: canonicalCourse.id,
           studentName: profile?.fullName || 'Student',
           lecturerId,
           lecturerName: lecturer.lecturerName,

@@ -1,0 +1,162 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    function hasRole(uid, role) {
+      return exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.role == role;
+    }
+
+    function isStudent() {
+      return signedIn() && hasRole(request.auth.uid, 'student');
+    }
+
+    function isLecturer() {
+      return signedIn() && hasRole(request.auth.uid, 'lecturer');
+    }
+
+    function ownsCourse(courseId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/courses/$(courseId))
+        && get(/databases/$(database)/documents/courses/$(courseId)).data.lecturerId == request.auth.uid;
+    }
+
+    function enrollmentIdFor(courseId, studentId) {
+      let course = get(/databases/$(database)/documents/courses/$(courseId));
+      return studentId + '_' + course.data.lecturerId + '_' + course.data.courseCode;
+    }
+
+    function isEnrolled(courseId, studentId) {
+      let enrollmentId = enrollmentIdFor(courseId, studentId);
+      return exists(/databases/$(database)/documents/enrollments/$(enrollmentId))
+        && get(/databases/$(database)/documents/enrollments/$(enrollmentId)).data.courseId == courseId
+        && get(/databases/$(database)/documents/enrollments/$(enrollmentId)).data.studentId == studentId;
+    }
+
+    match /users/{uid} {
+      allow get, list: if signedIn() && (
+        uid == request.auth.uid || resource.data.role == 'lecturer'
+      );
+
+      allow create: if isAdmin() || (
+        signedIn()
+        && uid == request.auth.uid
+        && request.resource.data.role == 'student'
+        && request.resource.data.email == request.auth.token.email
+      );
+
+      allow update: if isAdmin() || (
+        signedIn()
+        && uid == request.auth.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fullName', 'offeredCourses'
+        ])
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /courses/{courseId} {
+      allow get, list: if signedIn();
+
+      allow create: if isLecturer()
+        && request.resource.data.lecturerId == request.auth.uid
+        && request.resource.data.courseCode is string
+        && request.resource.data.courseTitle is string;
+
+      allow update: if isLecturer()
+        && resource.data.lecturerId == request.auth.uid
+        && request.resource.data.lecturerId == resource.data.lecturerId;
+
+      allow delete: if isLecturer() && resource.data.lecturerId == request.auth.uid;
+
+      match /lessons/{lessonId} {
+        allow get, list: if signedIn() && (
+          ownsCourse(courseId)
+          || (
+            isStudent()
+            && resource.data.published == true
+            && isEnrolled(courseId, request.auth.uid)
+          )
+        );
+
+        allow create: if isLecturer()
+          && ownsCourse(courseId)
+          && request.resource.data.title is string;
+
+        allow update: if isLecturer() && ownsCourse(courseId);
+        allow delete: if isLecturer() && ownsCourse(courseId);
+      }
+    }
+
+    match /enrollments/{enrollmentId} {
+      allow get, list: if signedIn() && (
+        resource.data.studentId == request.auth.uid
+        || (
+          isLecturer()
+          && resource.data.lecturerId == request.auth.uid
+          && ownsCourse(resource.data.courseId)
+        )
+      );
+
+      allow create: if isStudent()
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.courseId is string
+        && request.resource.data.lecturerId is string
+        && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
+        && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.lecturerId == request.resource.data.lecturerId
+        && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.courseCode == request.resource.data.courseCode
+        && enrollmentId == request.auth.uid + '_' + request.resource.data.lecturerId + '_' + request.resource.data.courseCode;
+
+      allow update: if isStudent()
+        && resource.data.studentId == request.auth.uid
+        && request.resource.data.studentId == resource.data.studentId
+        && request.resource.data.courseId == resource.data.courseId
+        && request.resource.data.lecturerId == resource.data.lecturerId;
+
+      allow delete: if isStudent() && resource.data.studentId == request.auth.uid;
+    }
+
+    match /courseProgress/{progressId} {
+      allow get: if signedIn() && (
+        !exists(/databases/$(database)/documents/courseProgress/$(progressId))
+        || (
+          resource.data.studentId == request.auth.uid
+          && isEnrolled(resource.data.courseId, request.auth.uid)
+        )
+        || (
+          isLecturer()
+          && ownsCourse(resource.data.courseId)
+          && isEnrolled(resource.data.courseId, resource.data.studentId)
+        )
+      );
+
+      allow list: if false;
+
+      allow create: if isStudent()
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.courseId is string
+        && isEnrolled(request.resource.data.courseId, request.auth.uid)
+        && progressId == request.resource.data.courseId + '_' + request.resource.data.studentId;
+
+      allow update: if isStudent()
+        && resource.data.studentId == request.auth.uid
+        && request.resource.data.studentId == resource.data.studentId
+        && request.resource.data.courseId == resource.data.courseId
+        && isEnrolled(resource.data.courseId, request.auth.uid);
+
+      allow delete: if isStudent() && resource.data.studentId == request.auth.uid;
+    }
+  }
+}

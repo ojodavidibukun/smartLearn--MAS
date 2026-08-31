@@ -65,6 +65,7 @@ export type Lesson = {
   content?: string;
   materials?: Array<{ name: string; url: string }>;
   order?: number;
+  published?: boolean;
   createdAt?: any;
 };
 
@@ -79,8 +80,9 @@ export async function addLesson(courseId: string, lesson: Lesson) {
   return ref.id;
 }
 
-export async function getLessons(courseId: string) {
-  const snap = await getDocs(collection(db, 'courses', courseId, 'lessons'));
+export async function getLessons(courseId: string, publishedOnly = false) {
+  const lessons = collection(db, 'courses', courseId, 'lessons');
+  const snap = await getDocs(publishedOnly ? query(lessons, where('published', '==', true)) : lessons);
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Lesson[];
 }
 
@@ -141,8 +143,8 @@ export async function setLessonCompleted(courseId: string, studentId: string, le
     const set = new Set(Array.isArray(data.completedLessons) ? data.completedLessons : []);
     if (completed) set.add(lessonId);
     else set.delete(lessonId);
-    await setDoc(docRef, { completedLessons: Array.from(set), updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(docRef, { courseId, studentId, completedLessons: Array.from(set), updatedAt: serverTimestamp() }, { merge: true });
   } else {
-    await setDoc(docRef, { completedLessons: completed ? [lessonId] : [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    await setDoc(docRef, { courseId, studentId, completedLessons: completed ? [lessonId] : [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   }
 }

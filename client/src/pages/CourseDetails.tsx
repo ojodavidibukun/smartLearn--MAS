@@ -30,12 +30,8 @@ export default function CourseDetails() {
           return;
         }
         setCourse(c);
-        let ls = await getLessons(courseId);
+        let ls = await getLessons(courseId, user?.uid !== c.lecturerId);
         ls.sort((a, b) => (a.order || 0) - (b.order || 0));
-        // If current user is not the course lecturer, only show published lessons
-        if (user?.uid !== c.lecturerId) {
-          ls = ls.filter((l) => !!(l as any).published);
-        }
         setLessons(ls);
         if (user?.uid) {
           const p = await getStudentProgress(courseId, user.uid);

@@ -20,7 +20,6 @@ export default function signUp(){
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [role, setRole] = useState("student");
     const [error, setError] = useState('');
     const [success, setSuccess] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -67,13 +66,9 @@ export default function signUp(){
             const userData: any = {
                 fullName: fullName,
                 email: email,
-                role: role,
+                role: 'student',
                 createdAt: serverTimestamp(),
             };
-
-            if (role === 'lecturer') {
-                userData.offeredCourses = [];
-            }
 
             await setDoc(doc(db, "users", user.uid), userData);
 
@@ -151,15 +146,6 @@ export default function signUp(){
                                             {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                         </button>
                                     </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 mt-2">
-                                    <button className={`flex-1 px-4 py-2 rounded-md border ${role === 'student' ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent'}`} onClick={() => setRole('student')}>
-                                        Student
-                                    </button>
-                                    <button className={`flex-1 px-4 py-2 rounded-md border ${role === 'lecturer' ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent'}`} onClick={() => setRole('lecturer')}>
-                                        Educator
-                                    </button>
                                 </div>
 
                                 <div className="flex items-center justify-between gap-3">

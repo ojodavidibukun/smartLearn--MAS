@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",
+    "migrate:firestore": "tsx scripts/migrate-firestore-ownership.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -46,6 +47,7 @@
     "embla-carousel-react": "^8.6.0",
     "express": "^4.21.2",
     "firebase": "^12.17.1",
+    "firebase-admin": "^13.5.0",
     "framer-motion": "^12.23.22",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.453.0",
