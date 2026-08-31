@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { storage } from '@/firebase/config';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { createStudentAnnouncement } from '@/lib/notifications';
 
 export type Course = {
   id?: string;
@@ -54,6 +55,16 @@ export async function ensureCourseExists(course: Course): Promise<string> {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  try {
+    await createStudentAnnouncement(
+      course.lecturerId,
+      'New course available',
+      `${course.courseTitle} (${course.courseCode}) is now available for enrollment.`,
+    );
+  } catch (error) {
+    console.error('Course created, but announcement could not be saved:', error);
+  }
 
   return ref.id;
 }
@@ -103,7 +114,25 @@ export function subscribeCoursesByLecturer(lecturerId: string, cb: (courses: Cou
 
 export async function updateLesson(courseId: string, lessonId: string, patch: Partial<Lesson>) {
   const lessonRef = doc(db, 'courses', courseId, 'lessons', lessonId);
+  const [lessonSnapshot, courseSnapshot] = await Promise.all([
+    getDoc(lessonRef),
+    getDoc(doc(db, 'courses', courseId)),
+  ]);
   await setDoc(lessonRef, { ...patch, updatedAt: serverTimestamp() }, { merge: true });
+
+  if (patch.published === true && lessonSnapshot.data()?.published !== true && courseSnapshot.exists()) {
+    const course = courseSnapshot.data() as Course;
+    try {
+      await createStudentAnnouncement(
+        course.lecturerId,
+        'New lesson published',
+        `A new lesson is available in ${course.courseTitle} (${course.courseCode}).`,
+        `/course/${courseId}`,
+      );
+    } catch (error) {
+      console.error('Lesson published, but announcement could not be saved:', error);
+    }
+  }
 }
 
 export async function deleteLesson(courseId: string, lessonId: string) {

@@ -158,5 +158,17 @@ service cloud.firestore {
 
       allow delete: if isStudent() && resource.data.studentId == request.auth.uid;
     }
+
+    match /notifications/{notificationId} {
+      allow get, list: if signedIn() && resource.data.audience == 'students';
+
+      allow create: if isLecturer()
+        && request.resource.data.audience == 'students'
+        && request.resource.data.lecturerId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.message is string;
+
+      allow update, delete: if false;
+    }
   }
 }

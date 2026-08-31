@@ -65,7 +65,6 @@ export default function StudentDashboard() {
           .filter((lecturer) => lecturer.courses.length > 0);
 
         setAvailableLecturers(lecturers);
-
         const enrollmentsQuery = query(collection(db, 'enrollments'), where('studentId', '==', user.uid));
         const enrollmentSnapshot = await getDocs(enrollmentsQuery);
         setRegisteredCourses(

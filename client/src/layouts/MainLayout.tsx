@@ -3,10 +3,11 @@
 
 import { Button } from '@/components/ui/button';
 import { Bell, LogOut, Menu, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { getUnreadNotificationsCount } from '@/data/mockData';
 import { useLogout } from "../hooks/useLogout";
+import { useAuth } from '@/contexts/AuthContext';
+import { markStudentNotificationRead, subscribeStudentAnnouncements } from '@/lib/notifications';
 
 
 
@@ -17,9 +18,23 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children, showNav = true }: MainLayoutProps) {
   const { logout } = useLogout();
+  const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<import('@/types').Notification[]>([]);
   const [, setLocation] = useLocation();
-  const unreadCount = getUnreadNotificationsCount();
+
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
+
+    const unsubscribe = subscribeStudentAnnouncements(user.uid, setNotifications, () => setNotifications([]));
+    return unsubscribe;
+  }, [user]);
+
+  const unreadCount = notifications.filter((notification) => !notification.read).length;
 
 
   const navItems = [
@@ -63,12 +78,55 @@ export default function MainLayout({ children, showNav = true }: MainLayoutProps
           <div className="flex items-center gap-2">
             {showNav && (
               <>
-                <Button variant="ghost" size="icon" className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative"
+                  onClick={() => setNotificationsOpen((open) => !open)}
+                  aria-label="Notifications"
+                >
                   <Bell className="w-5 h-5" />
                   {unreadCount > 0 && (
                     <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
                   )}
                 </Button>
+                {notificationsOpen && (
+                  <div className="absolute right-16 top-14 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-border bg-card p-3 shadow-lg">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h2 className="font-semibold">Notifications</h2>
+                      <span className="text-xs text-muted-foreground">{unreadCount} unread</span>
+                    </div>
+                    {notifications.length === 0 ? (
+                      <p className="py-4 text-sm text-muted-foreground">No notifications yet.</p>
+                    ) : (
+                      <div className="max-h-80 space-y-2 overflow-y-auto">
+                        {notifications.map((notification) => (
+                          <button
+                            key={notification.id}
+                            type="button"
+                            className={`w-full rounded-md border p-3 text-left ${notification.read ? 'border-border bg-background' : 'border-primary/30 bg-primary/5'}`}
+                            onClick={() => {
+                              if (user && !notification.read) {
+                                markStudentNotificationRead(user.uid, notification.id);
+                                setNotifications((current) => current.map((item) =>
+                                  item.id === notification.id ? { ...item, read: true } : item,
+                                ));
+                              }
+                              if (notification.actionUrl) setLocation(notification.actionUrl);
+                              setNotificationsOpen(false);
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-sm font-medium">{notification.title}</span>
+                              {!notification.read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />}
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">{notification.message}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
