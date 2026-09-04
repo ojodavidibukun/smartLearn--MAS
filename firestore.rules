@@ -49,7 +49,7 @@ service cloud.firestore {
       allow create: if isAdmin() || (
         signedIn()
         && uid == request.auth.uid
-        && request.resource.data.role == 'student'
+        && request.resource.data.role in ['student', 'lecturer']
         && request.resource.data.email == request.auth.token.email
       );
 
