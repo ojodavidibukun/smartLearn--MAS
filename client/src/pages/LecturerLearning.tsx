@@ -61,12 +61,16 @@ export default function LecturerLearning() {
   const [quizTitle, setQuizTitle] = useState('');
   const [quizDescription, setQuizDescription] = useState('');
   const [quizPublished, setQuizPublished] = useState(false);
+  const [quizDuration, setQuizDuration] = useState('');
+  const [quizAllowRetake, setQuizAllowRetake] = useState(false);
+  const [quizMaxAttempts, setQuizMaxAttempts] = useState('');
   const [questions, setQuestions] = useState<QuestionDraft[]>([emptyQuestion]);
   const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
 
   const selectedCourse = useMemo(() => courses.find((course) => course.id === courseId), [courses, courseId]);
+  const courseTopics = useMemo(() => Array.from(new Set(lessons.map((lesson) => lesson.topic?.trim()).filter(Boolean) as string[])).sort(), [lessons]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -155,6 +159,9 @@ export default function LecturerLearning() {
     setQuizTitle(quiz.title);
     setQuizDescription(quiz.description || '');
     setQuizPublished(!!quiz.published);
+    setQuizDuration(quiz.durationMinutes ? String(quiz.durationMinutes) : '');
+    setQuizAllowRetake(!!quiz.allowRetake);
+    setQuizMaxAttempts(quiz.maxAttempts ? String(quiz.maxAttempts) : '');
     setQuestions(quiz.questions.length ? quiz.questions.map(({ id, ...question }) => question) : [emptyQuestion]);
   };
 
@@ -168,6 +175,9 @@ export default function LecturerLearning() {
         id: editingQuizId || undefined,
         title: quizTitle.trim(), description: quizDescription,
         published: quizPublished,
+        durationMinutes: quizDuration ? Math.max(1, Number(quizDuration)) : undefined,
+        allowRetake: quizAllowRetake,
+        maxAttempts: quizAllowRetake && quizMaxAttempts ? Math.max(1, Number(quizMaxAttempts)) : undefined,
         questions: validQuestions.map((question, index) => ({
           ...question,
           id: `${editingQuizId || 'new'}-${index + 1}`,
@@ -175,7 +185,7 @@ export default function LecturerLearning() {
         })),
       });
       await refreshContent();
-      setEditingQuizId(null); setQuizTitle(''); setQuizDescription(''); setQuizPublished(false); setQuestions([emptyQuestion]);
+      setEditingQuizId(null); setQuizTitle(''); setQuizDescription(''); setQuizPublished(false); setQuizDuration(''); setQuizAllowRetake(false); setQuizMaxAttempts(''); setQuestions([emptyQuestion]);
       setMessage('Quiz saved.');
     } catch (error: any) {
       setMessage(error?.message || 'Unable to save the quiz.');
@@ -229,8 +239,8 @@ export default function LecturerLearning() {
           <Card className="p-5">
             <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold">Quiz management</h2><p className="text-sm text-muted-foreground">Create assessments and group questions by topic.</p></div><Badge variant="secondary">{quizzes.length} quizzes</Badge></div>
             <div className="space-y-3"><Input placeholder="Quiz title" value={quizTitle} onChange={(event) => setQuizTitle(event.target.value)} /><Input placeholder="Description (optional)" value={quizDescription} onChange={(event) => setQuizDescription(event.target.value)} />
-              {questions.map((question, index) => <div key={index} className="space-y-2 rounded-md border border-border p-3"><div className="flex items-center justify-between"><p className="text-sm font-medium">Question {index + 1}</p>{questions.length > 1 && <Button variant="ghost" size="icon" title="Remove question" onClick={() => setQuestions((current) => current.filter((_, questionIndex) => questionIndex !== index))}><Trash2 className="h-4 w-4" /></Button>}</div><Input placeholder="Question" value={question.prompt} onChange={(event) => updateQuestion(index, { prompt: event.target.value })} /><Input placeholder="Topic" value={question.topic || ''} onChange={(event) => updateQuestion(index, { topic: event.target.value })} />{question.options.map((option, optionIndex) => <div key={optionIndex} className="flex gap-2"><Input placeholder={`Answer option ${optionIndex + 1}`} value={option} onChange={(event) => updateQuestion(index, { options: question.options.map((item, itemIndex) => itemIndex === optionIndex ? event.target.value : item) })} /><label className="flex items-center gap-1 text-xs whitespace-nowrap"><input type="radio" name={`correct-${index}`} checked={question.correctAnswer === optionIndex} onChange={() => updateQuestion(index, { correctAnswer: optionIndex })} /> Correct</label></div>)}<Button variant="outline" size="sm" onClick={() => updateQuestion(index, { options: [...question.options, ''] })}><Plus className="mr-1 h-3 w-3" />Option</Button></div>)}
-              <Button variant="outline" onClick={() => setQuestions((current) => [...current, { ...emptyQuestion, options: ['', ''] }])}><Plus className="mr-1 h-4 w-4" />Question</Button><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={quizPublished} onChange={(event) => setQuizPublished(event.target.checked)} /> Published for students</label><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => { setEditingQuizId(null); setQuizTitle(''); setQuizDescription(''); setQuestions([emptyQuestion]); }}>Clear</Button><Button onClick={saveQuizDraft} disabled={saving}>{editingQuizId ? 'Update quiz' : 'Save quiz'}</Button></div>
+              {questions.map((question, index) => <div key={index} className="space-y-2 rounded-md border border-border p-3"><div className="flex items-center justify-between"><p className="text-sm font-medium">Question {index + 1}</p>{questions.length > 1 && <Button variant="ghost" size="icon" title="Remove question" onClick={() => setQuestions((current) => current.filter((_, questionIndex) => questionIndex !== index))}><Trash2 className="h-4 w-4" /></Button>}</div><Input placeholder="Question" value={question.prompt} onChange={(event) => updateQuestion(index, { prompt: event.target.value })} /><select value={question.topic || ''} onChange={(event) => updateQuestion(index, { topic: event.target.value })} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">No topic (optional)</option>{question.topic && !courseTopics.includes(question.topic) && <option value={question.topic}>{question.topic}</option>}{courseTopics.map((topic) => <option key={topic} value={topic}>{topic}</option>)}</select>{question.options.map((option, optionIndex) => <div key={optionIndex} className="flex gap-2"><Input placeholder={`Answer option ${optionIndex + 1}`} value={option} onChange={(event) => updateQuestion(index, { options: question.options.map((item, itemIndex) => itemIndex === optionIndex ? event.target.value : item) })} /><label className="flex items-center gap-1 text-xs whitespace-nowrap"><input type="radio" name={`correct-${index}`} checked={question.correctAnswer === optionIndex} onChange={() => updateQuestion(index, { correctAnswer: optionIndex })} /> Correct</label></div>)}<Button variant="outline" size="sm" onClick={() => updateQuestion(index, { options: [...question.options, ''] })}><Plus className="mr-1 h-3 w-3" />Option</Button></div>)}
+              <Button variant="outline" onClick={() => setQuestions((current) => [...current, { ...emptyQuestion, options: ['', ''] }])}><Plus className="mr-1 h-4 w-4" />Question</Button><div className="grid gap-3 md:grid-cols-2"><Input type="number" min="1" placeholder="Duration in minutes (optional)" value={quizDuration} onChange={(event) => setQuizDuration(event.target.value)} /><Input type="number" min="1" placeholder="Maximum attempts (optional)" value={quizMaxAttempts} onChange={(event) => setQuizMaxAttempts(event.target.value)} disabled={!quizAllowRetake} /></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={quizAllowRetake} onChange={(event) => setQuizAllowRetake(event.target.checked)} /> Allow retake</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={quizPublished} onChange={(event) => setQuizPublished(event.target.checked)} /> Published for students</label><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => { setEditingQuizId(null); setQuizTitle(''); setQuizDescription(''); setQuizDuration(''); setQuizAllowRetake(false); setQuizMaxAttempts(''); setQuestions([emptyQuestion]); }}>Clear</Button><Button onClick={saveQuizDraft} disabled={saving}>{editingQuizId ? 'Update quiz' : 'Save quiz'}</Button></div>
             </div>
             <div className="mt-6 space-y-2">{quizzes.map((quiz) => <div key={quiz.id} className="flex items-center justify-between rounded-md border border-border p-3"><div><p className="font-medium">{quiz.title}</p><p className="text-xs text-muted-foreground">{quiz.questions.length} questions · {quiz.published ? 'Published' : 'Unpublished'}</p></div><div className="flex gap-1"><Button variant="ghost" size="icon" title="Edit quiz" onClick={() => startQuizEdit(quiz)}><Edit3 className="h-4 w-4" /></Button><Button variant="ghost" size="icon" title="Delete quiz" onClick={async () => { if (courseId && quiz.id) { await deleteQuiz(courseId, quiz.id); await refreshContent(); } }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></div>)}</div>
           </Card>

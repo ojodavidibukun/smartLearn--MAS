@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, CheckCircle2, Video } from 'lucide-react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import MainLayout from '@/layouts/MainLayout';
 import LecturerLearning from './LecturerLearning';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { getStudentProgress, saveQuizAttempt, setLessonCompleted, subscribeLessons, subscribeQuizzes, type Course, type CourseQuiz, type Lesson } from '@/lib/courses';
+import { getQuizAttempt, getStudentProgress, getStudentQuizAttempts, setLessonCompleted, startQuizAttempt, subscribeLessons, subscribeQuizzes, type Course, type CourseQuiz, type Lesson, type QuizAttempt, updateQuizAttempt } from '@/lib/courses';
 
 type Enrollment = { courseId?: string };
 type Material = { kind: 'lesson' | 'video' | 'quiz'; course: Course; lesson?: Lesson; quiz?: CourseQuiz };
@@ -38,10 +38,14 @@ export default function Learning() {
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [submittedScore, setSubmittedScore] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const [timeUpMessage, setTimeUpMessage] = useState('');
 
   useEffect(() => {
     if (!user?.uid) return;
     let active = true;
+    getStudentQuizAttempts(user.uid).then((items) => { if (active) setAttempts(items); }).catch(() => { if (active) setAttempts([]); });
     getDocs(query(collection(db, 'enrollments'), where('studentId', '==', user.uid))).then(async (snapshot) => {
       const ids = snapshot.docs.map((item) => (item.data() as Enrollment).courseId).filter(Boolean) as string[];
       const loaded = (await Promise.all(ids.map(async (id) => {
@@ -80,25 +84,86 @@ export default function Learning() {
   const activeQuiz = activeMaterial?.quiz;
   const completedLessons = activeMaterial?.course.id ? progress[activeMaterial.course.id] || [] : [];
   const courseLessons = activeMaterial?.course.id ? lessons[activeMaterial.course.id] || [] : [];
+  const quizAttempts = activeQuiz?.id ? attempts.filter((attempt) => attempt.quizId === activeQuiz.id) : [];
+  const submittedAttempts = quizAttempts.filter((attempt) => attempt.status !== 'in_progress');
+  const activeAttempt = quizAttempts.find((attempt) => attempt.status === 'in_progress');
+  const latestSubmittedAttempt = submittedAttempts[submittedAttempts.length - 1];
+  const attemptLimit = activeQuiz?.maxAttempts && activeQuiz.maxAttempts > 0 ? activeQuiz.maxAttempts : null;
+  const canStartQuiz = !!activeQuiz && !activeAttempt && (activeQuiz.allowRetake || submittedAttempts.length === 0) && (!attemptLimit || submittedAttempts.length < attemptLimit);
 
-  const submitQuiz = async () => {
-    if (!user?.uid || !activeQuiz?.id || !activeMaterial?.course.id || Object.keys(answers).length !== activeQuiz.questions.length) return;
+  useEffect(() => {
+    if (!activeQuiz?.id) return;
+    setAnswers(activeAttempt?.answers?.reduce<Record<number, number>>((result, answer, index) => {
+      if (typeof answer === 'number') result[index] = answer;
+      return result;
+    }, {}) || {});
+    setSubmittedScore(latestSubmittedAttempt?.score ?? null);
+    setTimeUpMessage('');
+  }, [activeQuiz?.id, activeAttempt?.id, latestSubmittedAttempt?.id]);
+
+  useEffect(() => {
+    if (!activeAttempt || !activeQuiz?.durationMinutes || !activeAttempt.startedAt) {
+      setTimeRemaining(null);
+      return;
+    }
+    const startMillis = typeof activeAttempt.startedAt?.toMillis === 'function'
+      ? activeAttempt.startedAt.toMillis()
+      : new Date(activeAttempt.startedAt).getTime();
+    const updateRemaining = () => setTimeRemaining(Math.max(0, activeQuiz.durationMinutes! * 60 - Math.floor((Date.now() - startMillis) / 1000)));
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [activeAttempt?.id, activeAttempt?.startedAt, activeQuiz?.durationMinutes]);
+
+  const startQuiz = async () => {
+    if (!user?.uid || !activeQuiz?.id || !activeMaterial?.course.id || !canStartQuiz) return;
+    setSaving(true);
+    try {
+      const attemptNumber = submittedAttempts.length + 1;
+      const attemptId = await startQuizAttempt({ courseId: activeMaterial.course.id, quizId: activeQuiz.id, studentId: user.uid, studentName: profile?.fullName || 'Student', attemptNumber, answers: [] });
+      const started = await getQuizAttempt(attemptId);
+      if (started) setAttempts((current) => [...current, started]);
+    } finally { setSaving(false); }
+  };
+
+  const selectAnswer = (index: number, optionIndex: number) => {
+    if (!activeAttempt) return;
+    setAnswers((current) => {
+      const next = { ...current, [index]: optionIndex };
+      const storedAnswers = activeQuiz?.questions.map((_, questionIndex) => typeof next[questionIndex] === 'number' ? next[questionIndex] : -1);
+      updateQuizAttempt(activeAttempt.id, { answers: storedAnswers }).catch(() => undefined);
+      setAttempts((items) => items.map((attempt) => attempt.id === activeAttempt.id ? { ...attempt, answers: storedAnswers } : attempt));
+      return next;
+    });
+  };
+
+  const submitQuiz = async (automatic = false) => {
+    if (!user?.uid || !activeQuiz?.id || !activeMaterial?.course.id || !activeAttempt || (!automatic && Object.keys(answers).length !== activeQuiz.questions.length) || submittedScore !== null) return;
     const topicScores: Record<string, { correct: number; total: number }> = {};
     let correct = 0;
     activeQuiz.questions.forEach((question, index) => {
-      const topic = question.topic?.trim() || 'Uncategorized';
-      const score = topicScores[topic] || { correct: 0, total: 0 };
       const isCorrect = answers[index] === question.correctAnswer;
-      topicScores[topic] = { correct: score.correct + (isCorrect ? 1 : 0), total: score.total + 1 };
+      const topic = question.topic?.trim();
+      if (topic) {
+        const score = topicScores[topic] || { correct: 0, total: 0 };
+        topicScores[topic] = { correct: score.correct + (isCorrect ? 1 : 0), total: score.total + 1 };
+      }
       if (isCorrect) correct += 1;
     });
     setSaving(true);
     try {
       const score = Math.round((correct / activeQuiz.questions.length) * 100);
-      await saveQuizAttempt({ courseId: activeMaterial.course.id, quizId: activeQuiz.id, studentId: user.uid, studentName: profile?.fullName || 'Student', score, answers: activeQuiz.questions.map((_, index) => answers[index]), topicScores });
+      const submittedAnswers = activeQuiz.questions.map((_, index) => typeof answers[index] === 'number' ? answers[index] : -1);
+      await updateQuizAttempt(activeAttempt.id, { status: 'submitted', score, answers: submittedAnswers, topicScores, submittedAt: serverTimestamp(), completedAt: serverTimestamp() });
+      setAttempts((items) => items.map((attempt) => attempt.id === activeAttempt.id ? { ...attempt, status: 'submitted', score, answers: submittedAnswers, topicScores } : attempt));
       setSubmittedScore(score);
+      if (automatic) setTimeUpMessage('Time is up. Your quiz has been submitted automatically.');
     } finally { setSaving(false); }
   };
+
+  useEffect(() => {
+    if (timeRemaining === 0 && activeAttempt && submittedScore === null) submitQuiz(true).catch(() => undefined);
+  }, [timeRemaining, activeAttempt?.id, submittedScore]);
 
   const completeLesson = async (lesson: Lesson) => {
     if (!user?.uid || !activeMaterial?.course.id || !lesson.id) return;
@@ -121,7 +186,7 @@ export default function Learning() {
       <div className="space-y-3">{filteredMaterials.length === 0 ? <Card className="p-6 text-sm text-muted-foreground">No published materials match these filters.</Card> : filteredMaterials.map((item) => <button key={`${item.kind}-${item.lesson?.id || item.quiz?.id}`} onClick={() => { setSelected(item); setAnswers({}); setSubmittedScore(null); }} className={`w-full rounded-md border p-4 text-left ${activeMaterial === item ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}><div className="flex items-start gap-3"><div className="mt-1 text-primary">{item.kind === 'video' ? <Video className="h-4 w-4" /> : item.kind === 'quiz' ? <ArrowRight className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}</div><div className="min-w-0"><p className="font-medium">{item.lesson?.title || item.quiz?.title}</p><p className="text-xs text-muted-foreground">{item.course.courseTitle} · {item.lesson?.topic || 'Quiz topics'}</p><Badge variant="outline" className="mt-2">{item.kind === 'lesson' ? 'Lesson' : item.kind === 'video' ? 'Video' : 'Quiz'}</Badge></div></div></button>)}</div>
       {activeMaterial && <Card className="p-6"><div className="mb-5"><p className="text-sm text-muted-foreground">{activeMaterial.course.courseCode} · {activeMaterial.course.courseTitle}</p><h2 className="mt-1 text-2xl font-bold">{activeMaterial.lesson?.title || activeMaterial.quiz?.title}</h2><p className="mt-2 text-sm text-muted-foreground">{activeMaterial.lesson?.topic || activeMaterial.quiz?.description || 'Published quiz'}</p></div>
         {activeMaterial.kind !== 'quiz' && <><div className="mb-5 flex items-center justify-between text-sm"><span>Course progress</span><span>{courseLessons.length ? Math.round((courseLessons.filter((lesson) => completedLessons.includes(lesson.id || '')).length / courseLessons.length) * 100) : 0}%</span></div><Progress value={courseLessons.length ? (courseLessons.filter((lesson) => completedLessons.includes(lesson.id || '')).length / courseLessons.length) * 100 : 0} className="mb-6" />{activeMaterial.kind === 'video' && youtubeEmbed(activeMaterial.lesson?.videoUrl) ? <iframe className="mb-6 aspect-video w-full rounded-md" src={youtubeEmbed(activeMaterial.lesson?.videoUrl)} title={activeMaterial.lesson?.title} allowFullScreen /> : <div className="mb-6 whitespace-pre-wrap rounded-md border border-border bg-secondary/30 p-5">{activeMaterial.lesson?.content || 'No lesson notes were added.'}</div>}{activeMaterial.lesson?.materials?.map((material) => <a className="mr-3 text-sm text-primary underline" key={material.url} href={material.url} target="_blank" rel="noreferrer">{material.name}</a>)}<Button className="mt-6" variant={completedLessons.includes(activeMaterial.lesson?.id || '') ? 'outline' : 'default'} onClick={() => activeMaterial.lesson && completeLesson(activeMaterial.lesson)}>{completedLessons.includes(activeMaterial.lesson?.id || '') ? 'Mark incomplete' : 'Mark complete'}</Button></>}
-        {activeQuiz && <>{submittedScore === null ? <div className="space-y-6">{activeQuiz.questions.map((question, index) => <div key={question.id} className="border-b border-border pb-5"><p className="font-medium">{index + 1}. {question.prompt}</p><p className="mt-1 text-xs text-muted-foreground">Topic: {question.topic || 'Uncategorized'}</p><div className="mt-3 space-y-2">{question.options.map((option, optionIndex) => <label key={optionIndex} className="flex cursor-pointer gap-2 rounded-md border border-border p-3 text-sm"><input type="radio" name={`question-${question.id}`} checked={answers[index] === optionIndex} onChange={() => setAnswers((value) => ({ ...value, [index]: optionIndex }))} />{option}</label>)}</div></div>)}<Button onClick={submitQuiz} disabled={saving || Object.keys(answers).length !== activeQuiz.questions.length}>{saving ? 'Saving...' : 'Submit quiz'} <ArrowRight className="ml-2 h-4 w-4" /></Button></div> : <div className="py-8 text-center"><p className="text-5xl font-bold">{submittedScore}%</p><p className="mt-2 text-muted-foreground">Your quiz result and topic performance were saved.</p><Button className="mt-6" variant="outline" onClick={() => { setAnswers({}); setSubmittedScore(null); }}>Retake quiz</Button></div>}</>}
+        {activeQuiz && <>{timeUpMessage && <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{timeUpMessage}</div>}{submittedScore !== null ? <div className="py-8 text-center"><p className="text-5xl font-bold">{submittedScore}%</p><p className="mt-2 text-muted-foreground">Your quiz result and topic performance were saved.</p>{activeQuiz.allowRetake && (!attemptLimit || submittedAttempts.length < attemptLimit) && <Button className="mt-6" variant="outline" onClick={() => { setAnswers({}); setSubmittedScore(null); setTimeUpMessage(''); }}>Start another attempt</Button>}</div> : activeAttempt ? <div className="space-y-6"><div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 px-4 py-3 text-sm"><span>Attempt {activeAttempt.attemptNumber || 1}{attemptLimit ? ` of ${attemptLimit}` : ''}</span>{activeQuiz.durationMinutes && timeRemaining !== null && <span className="font-semibold tabular-nums">Time remaining: {String(Math.floor(timeRemaining / 60)).padStart(2, '0')}:{String(timeRemaining % 60).padStart(2, '0')}</span>}</div>{activeQuiz.questions.map((question, index) => <div key={question.id} className="border-b border-border pb-5"><p className="font-medium">{index + 1}. {question.prompt}</p>{question.topic && <p className="mt-1 text-xs text-muted-foreground">Topic: {question.topic}</p>}<div className="mt-3 space-y-2">{question.options.map((option, optionIndex) => <label key={optionIndex} className="flex cursor-pointer gap-2 rounded-md border border-border p-3 text-sm"><input type="radio" name={`question-${question.id}`} checked={answers[index] === optionIndex} onChange={() => selectAnswer(index, optionIndex)} />{option}</label>)}</div></div>)}<Button onClick={() => submitQuiz(false)} disabled={saving || Object.keys(answers).length !== activeQuiz.questions.length || timeRemaining === 0}>{saving ? 'Saving...' : 'Submit quiz'} <ArrowRight className="ml-2 h-4 w-4" /></Button></div> : canStartQuiz ? <div className="py-8 text-center"><p className="text-muted-foreground">{activeQuiz.durationMinutes ? `${activeQuiz.durationMinutes} minute timed quiz` : 'Untimed quiz'}{attemptLimit ? ` · Maximum ${attemptLimit} attempts` : ''}</p><Button className="mt-6" onClick={startQuiz} disabled={saving}>{saving ? 'Starting...' : 'Start quiz'} <ArrowRight className="ml-2 h-4 w-4" /></Button></div> : <div className="py-8 text-center"><p className="font-semibold">You have already completed this quiz.</p><p className="mt-2 text-sm text-muted-foreground">Retakes are not available for this quiz.</p></div>}</>}
       </Card>}
     </div>}
   </div></MainLayout>;

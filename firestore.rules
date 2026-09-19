@@ -177,11 +177,27 @@ service cloud.firestore {
       allow create: if isStudent()
         && request.resource.data.studentId == request.auth.uid
         && request.resource.data.courseId is string
-        && isEnrolled(request.resource.data.courseId, request.auth.uid);
+        && isEnrolled(request.resource.data.courseId, request.auth.uid)
+        && request.resource.data.status == 'in_progress'
+        && request.resource.data.startedAt == request.time
+        && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId)/quizzes/$(request.resource.data.quizId));
       allow update: if isStudent()
         && resource.data.studentId == request.auth.uid
         && request.resource.data.studentId == resource.data.studentId
-        && request.resource.data.courseId == resource.data.courseId;
+        && request.resource.data.courseId == resource.data.courseId
+        && request.resource.data.quizId == resource.data.quizId
+        && request.resource.data.startedAt == resource.data.startedAt
+        && (
+          (resource.data.status == 'in_progress'
+            && request.resource.data.status == 'in_progress'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers']))
+          || (resource.data.status == 'in_progress'
+            && request.resource.data.status == 'submitted'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'answers', 'score', 'topicScores', 'submittedAt', 'completedAt', 'status'
+            ]))
+        );
+
       allow delete: if isStudent() && resource.data.studentId == request.auth.uid;
     }
 

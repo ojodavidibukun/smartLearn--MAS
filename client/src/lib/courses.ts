@@ -138,6 +138,9 @@ export type CourseQuiz = {
   description?: string;
   questions: QuizQuestion[];
   published?: boolean;
+  durationMinutes?: number;
+  allowRetake?: boolean;
+  maxAttempts?: number;
   createdAt?: any;
   updatedAt?: any;
 };
@@ -151,6 +154,10 @@ export type QuizAttempt = {
   score?: number;
   answers?: number[];
   topicScores?: Record<string, { correct: number; total: number }>;
+  attemptNumber?: number;
+  status?: 'in_progress' | 'submitted';
+  startedAt?: any;
+  submittedAt?: any;
   completedAt?: any;
 };
 
@@ -297,6 +304,9 @@ export async function saveQuiz(courseId: string, quiz: Omit<CourseQuiz, 'courseI
     description: quiz.description || '',
     questions: quiz.questions,
     published: !!quiz.published,
+    durationMinutes: quiz.durationMinutes || null,
+    allowRetake: !!quiz.allowRetake,
+    maxAttempts: quiz.maxAttempts || null,
     updatedAt: serverTimestamp(),
   };
 
@@ -326,12 +336,34 @@ export async function getStudentQuizAttempts(studentId: string) {
   return snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as any) })) as QuizAttempt[];
 }
 
+export async function getQuizAttempt(attemptId: string) {
+  const snapshot = await getDoc(doc(db, 'quizAttempts', attemptId));
+  return snapshot.exists() ? ({ id: snapshot.id, ...(snapshot.data() as any) } as QuizAttempt) : null;
+}
+
 export async function saveQuizAttempt(attempt: Omit<QuizAttempt, 'id'>) {
-  const created = await addDoc(collection(db, 'quizAttempts'), {
-    ...attempt,
+  const { status: _status, startedAt: _startedAt, submittedAt: _submittedAt, completedAt: _completedAt, ...initial } = attempt;
+  const attemptId = await startQuizAttempt(initial);
+  await updateQuizAttempt(attemptId, {
+    status: 'submitted',
+    submittedAt: serverTimestamp(),
     completedAt: serverTimestamp(),
   });
+  return attemptId;
+}
+
+export async function startQuizAttempt(attempt: Omit<QuizAttempt, 'id' | 'status' | 'startedAt' | 'submittedAt' | 'completedAt'>) {
+  const created = await addDoc(collection(db, 'quizAttempts'), {
+    ...attempt,
+    status: 'in_progress',
+    answers: attempt.answers || [],
+    startedAt: serverTimestamp(),
+  });
   return created.id;
+}
+
+export async function updateQuizAttempt(attemptId: string, patch: Partial<QuizAttempt>) {
+  await updateDoc(doc(db, 'quizAttempts', attemptId), patch);
 }
 
 // Student progress stored in collection 'courseProgress' with id `${courseId}_${studentId}`
