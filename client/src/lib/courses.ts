@@ -284,8 +284,9 @@ export async function appendMaterialToLesson(courseId: string, lessonId: string,
   await setDoc(lessonRef, { materials: [...existing, material], updatedAt: serverTimestamp() }, { merge: true });
 }
 
-export async function getQuizzes(courseId: string) {
-  const snapshot = await getDocs(collection(db, 'courses', courseId, 'quizzes'));
+export async function getQuizzes(courseId: string, publishedOnly = false) {
+  const quizzes = collection(db, 'courses', courseId, 'quizzes');
+  const snapshot = await getDocs(publishedOnly ? query(quizzes, where('published', '==', true)) : quizzes);
   return snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as any) })) as CourseQuiz[];
 }
 
