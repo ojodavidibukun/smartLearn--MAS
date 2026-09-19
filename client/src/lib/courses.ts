@@ -7,6 +7,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
   query,
   where,
@@ -115,7 +116,42 @@ export type Lesson = {
   materials?: Array<{ name: string; url: string }>;
   order?: number;
   published?: boolean;
+  topic?: string;
+  tags?: string[];
+  videoUrl?: string;
+  materialType?: 'note' | 'video';
   createdAt?: any;
+};
+
+export type QuizQuestion = {
+  id: string;
+  prompt: string;
+  options: string[];
+  correctAnswer: number;
+  topic?: string;
+};
+
+export type CourseQuiz = {
+  id?: string;
+  courseId: string;
+  title: string;
+  description?: string;
+  questions: QuizQuestion[];
+  published?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+export type QuizAttempt = {
+  id: string;
+  courseId: string;
+  quizId: string;
+  studentId: string;
+  studentName?: string;
+  score?: number;
+  answers?: number[];
+  topicScores?: Record<string, { correct: number; total: number }>;
+  completedAt?: any;
 };
 
 export async function addLesson(courseId: string, lesson: Lesson) {
@@ -124,6 +160,11 @@ export async function addLesson(courseId: string, lesson: Lesson) {
     content: lesson.content || '',
     materials: lesson.materials || [],
     order: lesson.order || 0,
+    published: !!lesson.published,
+    topic: lesson.topic || '',
+    tags: lesson.tags || [],
+    videoUrl: lesson.videoUrl || '',
+    materialType: lesson.materialType || 'note',
     createdAt: serverTimestamp(),
   });
 
@@ -150,6 +191,14 @@ export async function getLessons(courseId: string, publishedOnly = false) {
   const lessons = collection(db, 'courses', courseId, 'lessons');
   const snap = await getDocs(publishedOnly ? query(lessons, where('published', '==', true)) : lessons);
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Lesson[];
+}
+
+export function subscribeLessons(courseId: string, publishedOnly: boolean, callback: (lessons: Lesson[]) => void) {
+  const lessons = collection(db, 'courses', courseId, 'lessons');
+  const source = publishedOnly ? query(lessons, where('published', '==', true)) : lessons;
+  return onSnapshot(source, (snapshot) => {
+    callback(snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as any) })) as Lesson[]);
+  });
 }
 
 export async function getCoursesByLecturer(lecturerId: string) {
@@ -226,6 +275,63 @@ export async function appendMaterialToLesson(courseId: string, lessonId: string,
   const snap = await getDoc(lessonRef);
   const existing = snap.exists() ? (snap.data() as any).materials || [] : [];
   await setDoc(lessonRef, { materials: [...existing, material], updatedAt: serverTimestamp() }, { merge: true });
+}
+
+export async function getQuizzes(courseId: string) {
+  const snapshot = await getDocs(collection(db, 'courses', courseId, 'quizzes'));
+  return snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as any) })) as CourseQuiz[];
+}
+
+export function subscribeQuizzes(courseId: string, publishedOnly: boolean, callback: (quizzes: CourseQuiz[]) => void) {
+  const quizzes = collection(db, 'courses', courseId, 'quizzes');
+  const source = publishedOnly ? query(quizzes, where('published', '==', true)) : quizzes;
+  return onSnapshot(source, (snapshot) => {
+    callback(snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as any) })) as CourseQuiz[]);
+  });
+}
+
+export async function saveQuiz(courseId: string, quiz: Omit<CourseQuiz, 'courseId'> & { id?: string }) {
+  const quizData = {
+    courseId,
+    title: quiz.title,
+    description: quiz.description || '',
+    questions: quiz.questions,
+    published: !!quiz.published,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (quiz.id) {
+    await updateDoc(doc(db, 'courses', courseId, 'quizzes', quiz.id), quizData);
+    return quiz.id;
+  }
+
+  const created = await addDoc(collection(db, 'courses', courseId, 'quizzes'), {
+    ...quizData,
+    createdAt: serverTimestamp(),
+  });
+  return created.id;
+}
+
+export async function deleteQuiz(courseId: string, quizId: string) {
+  await deleteDoc(doc(db, 'courses', courseId, 'quizzes', quizId));
+}
+
+export async function getQuizAttempts(courseId: string) {
+  const snapshot = await getDocs(query(collection(db, 'quizAttempts'), where('courseId', '==', courseId)));
+  return snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as any) })) as QuizAttempt[];
+}
+
+export async function getStudentQuizAttempts(studentId: string) {
+  const snapshot = await getDocs(query(collection(db, 'quizAttempts'), where('studentId', '==', studentId)));
+  return snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as any) })) as QuizAttempt[];
+}
+
+export async function saveQuizAttempt(attempt: Omit<QuizAttempt, 'id'>) {
+  const created = await addDoc(collection(db, 'quizAttempts'), {
+    ...attempt,
+    completedAt: serverTimestamp(),
+  });
+  return created.id;
 }
 
 // Student progress stored in collection 'courseProgress' with id `${courseId}_${studentId}`

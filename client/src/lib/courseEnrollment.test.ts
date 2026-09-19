@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildEnrollmentId,
+  findCourseForEnrollment,
   matchesCourseSearch,
   normalizeAcademicPeriod,
   normalizeCourseEntry,
@@ -39,5 +40,32 @@ describe('course enrollment helpers', () => {
     expect(
       buildEnrollmentId('student-1', 'lecturer-1', 'CPE310', academicPeriod),
     ).toBe('student-1_lecturer-1_CPE310');
+  });
+
+  it('resolves enrollments using courseId first and then falls back to the lecturer/course code tuple', () => {
+    const courses = [
+      {
+        id: 'course-123',
+        lecturerId: 'lecturer-1',
+        courseCode: 'CPE310',
+        courseTitle: 'Agent-Based Technology',
+      },
+    ];
+
+    const enrollmentByCourseId = {
+      studentId: 'student-1',
+      lecturerId: 'lecturer-1',
+      courseId: 'course-123',
+      courseCode: 'CPE310',
+    } as any;
+
+    const enrollmentByFallback = {
+      studentId: 'student-1',
+      lecturerId: 'lecturer-1',
+      courseCode: 'CPE310',
+    } as any;
+
+    expect(findCourseForEnrollment(enrollmentByCourseId, courses)).toBe(courses[0]);
+    expect(findCourseForEnrollment(enrollmentByFallback, courses)).toBe(courses[0]);
   });
 });

@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { db } from '@/firebase/config';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { subscribeCoursesByLecturer, getCourseByLecturerAndCode } from '@/lib/courses';
+import { findCourseForEnrollment } from '@/lib/courseEnrollment';
 
 type Enrollment = {
   id: string;
@@ -79,13 +80,19 @@ export default function LecturerDashboard() {
     const unsubList: Array<() => void> = [];
 
     enrollments.forEach((enr) => {
-      // find course id for this enrollment via courseCode and lecturerId
-      const course = courses.find((c) => c.courseCode === enr.courseCode && c.lecturerId === enr.lecturerId);
+      const course = findCourseForEnrollment(enr, courses);
       if (!course || !course.id) return;
+
       const progressDoc = doc(db, 'courseProgress', `${course.id}_${enr.studentId}`);
       const unsub = onSnapshot(progressDoc, (snap) => {
         const data = snap.exists() ? (snap.data() as any) : { completedLessons: [] };
-        setProgressByEnrollment((prev) => ({ ...prev, [enr.id]: { completed: Array.isArray(data.completedLessons) ? data.completedLessons.length : 0, lastUpdated: data.updatedAt } }));
+        setProgressByEnrollment((prev) => ({
+          ...prev,
+          [enr.id]: {
+            completed: Array.isArray(data.completedLessons) ? data.completedLessons.length : 0,
+            lastUpdated: data.updatedAt,
+          },
+        }));
       });
       unsubList.push(unsub);
     });
@@ -122,11 +129,13 @@ export default function LecturerDashboard() {
 
   // compute overall completion rate across enrollments where course published lessons > 0
   const completionRates: number[] = filteredEnrollments.map((enr: Enrollment) => {
-    const course = courses.find((c) => c.courseCode === enr.courseCode && c.lecturerId === enr.lecturerId);
+    const course = findCourseForEnrollment(enr, courses);
     if (!course || !course.id) return 0;
+
     const lessons = lessonsByCourse[course.id] || [];
     const published = lessons.filter((l:any)=>!!l.published).length;
     if (published === 0) return 0;
+
     const prog = progressByEnrollment[enr.id];
     const completed = prog ? prog.completed : 0;
     return Math.round((completed / published) * 100);
@@ -138,7 +147,7 @@ export default function LecturerDashboard() {
 
   // Helper to compute student row data
   const studentRows = filteredEnrollments.map((enr: Enrollment) => {
-    const course = courses.find((c) => c.courseCode === enr.courseCode && c.lecturerId === enr.lecturerId);
+    const course = findCourseForEnrollment(enr, courses);
     const lessons = course?.id ? (lessonsByCourse[course.id] || []) : [];
     const published = lessons.filter((l:any)=>!!l.published).length;
     const prog = progressByEnrollment[enr.id];

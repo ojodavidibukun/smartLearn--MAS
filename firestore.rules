@@ -98,6 +98,16 @@ service cloud.firestore {
         allow update: if isLecturer() && ownsCourse(courseId);
         allow delete: if isLecturer() && ownsCourse(courseId);
       }
+
+      match /quizzes/{quizId} {
+        allow get, list: if signedIn() && (
+          ownsCourse(courseId)
+          || (isStudent() && resource.data.published == true && isEnrolled(courseId, request.auth.uid))
+        );
+        allow create: if isLecturer() && ownsCourse(courseId) && request.resource.data.courseId == courseId;
+        allow update: if isLecturer() && ownsCourse(courseId) && request.resource.data.courseId == courseId;
+        allow delete: if isLecturer() && ownsCourse(courseId);
+      }
     }
 
     match /enrollments/{enrollmentId} {
@@ -156,6 +166,22 @@ service cloud.firestore {
         && request.resource.data.courseId == resource.data.courseId
         && isEnrolled(resource.data.courseId, request.auth.uid);
 
+      allow delete: if isStudent() && resource.data.studentId == request.auth.uid;
+    }
+
+    match /quizAttempts/{attemptId} {
+      allow get, list: if signedIn() && (
+        (isLecturer() && ownsCourse(resource.data.courseId))
+        || (isStudent() && resource.data.studentId == request.auth.uid)
+      );
+      allow create: if isStudent()
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.courseId is string
+        && isEnrolled(request.resource.data.courseId, request.auth.uid);
+      allow update: if isStudent()
+        && resource.data.studentId == request.auth.uid
+        && request.resource.data.studentId == resource.data.studentId
+        && request.resource.data.courseId == resource.data.courseId;
       allow delete: if isStudent() && resource.data.studentId == request.auth.uid;
     }
 

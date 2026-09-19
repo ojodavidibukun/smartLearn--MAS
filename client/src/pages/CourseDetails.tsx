@@ -91,6 +91,20 @@ export default function CourseDetails() {
                 <div>
                   <div className="prose max-w-none mb-4">{currentLesson.content || 'No content yet.'}</div>
 
+                  {currentLesson.videoUrl && (
+                    <div className="mb-4 aspect-video overflow-hidden rounded-md border border-border">
+                      <iframe
+                        className="h-full w-full"
+                        src={currentLesson.videoUrl.includes('youtube.com/watch')
+                          ? currentLesson.videoUrl.replace('watch?v=', 'embed/')
+                          : currentLesson.videoUrl.replace('youtu.be/', 'youtube.com/embed/')}
+                        title={currentLesson.title}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <Button onClick={() => toggleComplete(currentLesson.id)}>{progress.includes(currentLesson.id) ? 'Mark as incomplete' : 'Mark as completed'}</Button>
                     <Button variant="outline" onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))} disabled={currentIndex === 0}>Previous</Button>
