@@ -1,8 +1,8 @@
-# SmartLearn MAS - Setup Instructions
+# YouLearn - Setup Instructions
 
 ## Prerequisites
 
-Before setting up SmartLearn MAS, ensure you have the following installed on your system:
+Before setting up YouLearn, ensure you have the following installed on your system:
 
 - **Node.js** (v22.13.0 or higher) - [Download](https://nodejs.org/)
 - **pnpm** (v10.4.1 or higher) - Install globally with: `npm install -g pnpm`
@@ -12,11 +12,11 @@ Before setting up SmartLearn MAS, ensure you have the following installed on you
 
 ### 1. Extract the Project
 
-Unzip the `smartlearn-mas.zip` file to your desired location:
+Unzip the `youlearn.zip` file to your desired location:
 
 ```bash
-unzip smartlearn-mas.zip
-cd smartlearn-mas
+unzip youlearn.zip
+cd youlearn
 ```
 
 ### 2. Open in VS Code
@@ -25,7 +25,7 @@ cd smartlearn-mas
 code .
 ```
 
-Or open VS Code and use `File > Open Folder` to select the `smartlearn-mas` directory.
+Or open VS Code and use `File > Open Folder` to select the `youlearn` directory.
 
 ### 3. Install Dependencies
 
@@ -58,7 +58,7 @@ Navigate to `http://localhost:3000/` in your web browser.
 ## Project Structure
 
 ```
-smartlearn-mas/
+youlearn/
 ├── client/                 # React frontend
 │   ├── src/
 │   │   ├── pages/         # Page components

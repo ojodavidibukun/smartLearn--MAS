@@ -1,4 +1,4 @@
-# SmartLearn MAS - Quick Start Guide
+# YouLearn - Quick Start Guide
 
 ## 🚀 Get Started in 5 Minutes
 
@@ -9,8 +9,8 @@ Make sure you have:
 
 ### Step 2: Extract & Navigate
 ```bash
-unzip smartlearn-mas.zip
-cd smartlearn-mas
+unzip youlearn.zip
+cd youlearn
 ```
 
 ### Step 3: Install Dependencies

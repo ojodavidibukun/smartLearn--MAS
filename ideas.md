@@ -1,4 +1,4 @@
-# SmartLearn MAS - Design Philosophy
+# YouLearn - Design Philosophy
 
 ## Design Approach: Academic Minimalism
 

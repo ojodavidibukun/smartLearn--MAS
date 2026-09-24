@@ -1,10 +1,10 @@
-# SmartLearn MAS - Multi-Agent Personalized E-Learning System
+# YouLearn - Multi-Agent Personalized E-Learning System
 
 A lightweight academic demonstration of a multi-agent system for personalized e-learning and student performance monitoring. Built with React, TypeScript, and Tailwind CSS.
 
 ## Project Overview
 
-**SmartLearn MAS** is a university project for an Agent-Based Technology course that demonstrates how multiple software agents collaborate to create intelligent learning experiences. The system showcases personalized learning paths, real-time performance monitoring, and AI-powered recommendations through a clean, professional interface.
+**YouLearn** is a university project for an Agent-Based Technology course that demonstrates how multiple software agents collaborate to create intelligent learning experiences. The system showcases personalized learning paths, real-time performance monitoring, and AI-powered recommendations through a clean, professional interface.
 
 ### Key Features
 
@@ -29,7 +29,7 @@ A lightweight academic demonstration of a multi-agent system for personalized e-
 ## Project Structure
 
 ```
-smartlearn-mas/
+youlearn/
 ├── client/
 │   ├── public/              # Static files (favicon, robots.txt)
 │   ├── src/
