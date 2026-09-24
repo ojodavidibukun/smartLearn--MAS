@@ -13,12 +13,12 @@ export default function Landing() {
     {
       icon: Brain,
       title: 'Adaptive Learning Paths',
-      description: 'Content adjusts in real-time based on student performance and learning pace',
+      description: 'Learning guidance adapts to your progress, quiz results, and pace',
     },
     {
       icon: BarChart3,
-      title: 'Real-Time Analytics',
-      description: 'Comprehensive performance tracking with actionable insights for educators',
+      title: 'Personal Learning Insights',
+      description: 'See your progress, quiz results, and topics that deserve more practice',
     },
     {
       icon: Zap,
@@ -27,18 +27,18 @@ export default function Landing() {
     },
     {
       icon: Users,
-      title: 'Agent-Driven Architecture',
-      description: 'Specialized agents handle learning, monitoring, and recommendations independently',
+      title: 'Personal Learning Assistant',
+      description: 'Student-focused agents help you choose what to learn next',
     },
     {
       icon: Target,
-      title: 'Early Intervention',
-      description: 'Identify at-risk students and provide targeted support automatically',
+      title: 'Actionable Guidance',
+      description: 'Turn your own learning activity into useful next steps',
     },
     {
       icon: Lightbulb,
-      title: 'Data-Driven Insights',
-      description: 'Educators gain deep visibility into class performance and student needs',
+      title: 'Quality Course Content',
+      description: 'Facilitators create and publish lessons, videos, materials, and quizzes',
     },
   ];
 
@@ -49,9 +49,9 @@ export default function Landing() {
         <div className="container flex items-center justify-between h-16">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">SL</span>
+              <span className="text-white font-bold text-sm">YL</span>
             </div>
-            <span className="font-semibold text-lg">SmartLearn</span>
+            <span className="font-semibold text-lg">YouLearn</span>
           </div>
           <Button onClick={() => setLocation('/login')} className="gap-2">
             Sign In
@@ -72,7 +72,7 @@ export default function Landing() {
               </span>
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-              SmartLearn uses a network of specialized agents to personalize education, monitor progress in real-time, and deliver insights that help educators make better decisions.
+              YouLearn helps students discover courses, learn at their own pace, and receive personal guidance based on their activity and quiz performance.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
@@ -155,23 +155,23 @@ export default function Landing() {
             </Card>
 
             <Card className="p-6">
-              <h3 className="font-semibold mb-3 text-accent">For Educators</h3>
+              <h3 className="font-semibold mb-3 text-accent">For Facilitators</h3>
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li className="flex gap-2">
                   <span className="text-accent font-bold">•</span>
-                  <span>Comprehensive class analytics and trends</span>
+                  <span>Create and manage quality learning experiences</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-accent font-bold">•</span>
-                  <span>Early identification of at-risk students</span>
+                  <span>Publish lessons, videos, materials, and quizzes</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-accent font-bold">•</span>
-                  <span>Data-driven insights for intervention</span>
+                  <span>Edit courses and organize learning resources</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-accent font-bold">•</span>
-                  <span>Automated monitoring and reporting</span>
+                  <span>Keep courses clear, current, and useful</span>
                 </li>
               </ul>
             </Card>
@@ -200,7 +200,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-border bg-card py-8">
         <div className="container text-center text-sm text-muted-foreground">
-          <p>&copy; 2026 SmartLearn. Intelligent Learning Platform</p>
+          <p>&copy; 2026 YouLearn. Intelligent Learning Platform</p>
         </div>
       </footer>
     </div>

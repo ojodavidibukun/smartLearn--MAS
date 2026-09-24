@@ -29,16 +29,33 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/courses/$(courseId)).data.lecturerId == request.auth.uid;
     }
 
+    function isPublicCourse(courseId) {
+      return exists(/databases/$(database)/documents/courses/$(courseId))
+        && get(/databases/$(database)/documents/courses/$(courseId)).data.get('isArchived', false) != true
+        && (!('published' in get(/databases/$(database)/documents/courses/$(courseId)).data)
+          || get(/databases/$(database)/documents/courses/$(courseId)).data.published == true);
+    }
+
     function enrollmentIdFor(courseId, studentId) {
+      return studentId + '_' + courseId;
+    }
+
+    function legacyEnrollmentIdFor(courseId, studentId) {
       let course = get(/databases/$(database)/documents/courses/$(courseId));
       return studentId + '_' + course.data.lecturerId + '_' + course.data.courseCode;
     }
 
     function isEnrolled(courseId, studentId) {
       let enrollmentId = enrollmentIdFor(courseId, studentId);
-      return exists(/databases/$(database)/documents/enrollments/$(enrollmentId))
+      let legacyEnrollmentId = legacyEnrollmentIdFor(courseId, studentId);
+      return (exists(/databases/$(database)/documents/enrollments/$(enrollmentId))
         && get(/databases/$(database)/documents/enrollments/$(enrollmentId)).data.courseId == courseId
-        && get(/databases/$(database)/documents/enrollments/$(enrollmentId)).data.studentId == studentId;
+        && get(/databases/$(database)/documents/enrollments/$(enrollmentId)).data.studentId == studentId
+        && get(/databases/$(database)/documents/enrollments/$(enrollmentId)).data.get('status', 'active') != 'unenrolled')
+        || (exists(/databases/$(database)/documents/enrollments/$(legacyEnrollmentId))
+        && get(/databases/$(database)/documents/enrollments/$(legacyEnrollmentId)).data.courseId == courseId
+        && get(/databases/$(database)/documents/enrollments/$(legacyEnrollmentId)).data.studentId == studentId
+        && get(/databases/$(database)/documents/enrollments/$(legacyEnrollmentId)).data.get('status', 'active') != 'unenrolled');
     }
 
     match /users/{uid} {
@@ -79,15 +96,15 @@ service cloud.firestore {
         && resource.data.lecturerId == request.auth.uid
         && request.resource.data.lecturerId == resource.data.lecturerId;
 
-      allow delete: if isLecturer() && resource.data.lecturerId == request.auth.uid;
+      allow delete: if false;
 
       match /lessons/{lessonId} {
         allow get, list: if signedIn() && (
           ownsCourse(courseId)
           || (
             isStudent()
-            && resource.data.published == true
-            && isEnrolled(courseId, request.auth.uid)
+            && resource.data.get('published', true) == true
+            && isPublicCourse(courseId)
           )
         );
 
@@ -102,7 +119,7 @@ service cloud.firestore {
       match /quizzes/{quizId} {
         allow get, list: if signedIn() && (
           ownsCourse(courseId)
-          || (isStudent() && resource.data.published == true && isEnrolled(courseId, request.auth.uid))
+          || (isStudent() && resource.data.get('published', true) == true && isPublicCourse(courseId))
         );
         allow create: if isLecturer() && ownsCourse(courseId) && request.resource.data.courseId == courseId;
         allow update: if isLecturer() && ownsCourse(courseId) && request.resource.data.courseId == courseId;
@@ -124,10 +141,15 @@ service cloud.firestore {
         && request.resource.data.studentId == request.auth.uid
         && request.resource.data.courseId is string
         && request.resource.data.lecturerId is string
+        && request.resource.data.status == 'active'
         && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
+        && (!('published' in get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data)
+          || get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.published == true)
+        && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.get('isArchived', false) != true
         && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.lecturerId == request.resource.data.lecturerId
         && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.courseCode == request.resource.data.courseCode
-        && enrollmentId == request.auth.uid + '_' + request.resource.data.lecturerId + '_' + request.resource.data.courseCode;
+        && (enrollmentId == request.auth.uid + '_' + request.resource.data.courseId
+          || enrollmentId == request.auth.uid + '_' + request.resource.data.lecturerId + '_' + request.resource.data.courseCode);
 
       allow update: if isStudent()
         && resource.data.studentId == request.auth.uid
@@ -202,15 +224,24 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow get, list: if signedIn() && resource.data.audience == 'students';
+      allow get, list: if signedIn() && resource.data.recipientId == request.auth.uid;
 
-      allow create: if isLecturer()
-        && request.resource.data.audience == 'students'
-        && request.resource.data.lecturerId == request.auth.uid
+      allow create: if signedIn()
         && request.resource.data.title is string
-        && request.resource.data.message is string;
+        && request.resource.data.message is string
+        && request.resource.data.recipientId is string
+        && ((request.resource.data.recipientId == request.auth.uid
+          && request.resource.data.recipientRole == (isStudent() ? 'student' : 'lecturer'))
+          || (isLecturer()
+            && request.resource.data.recipientRole == 'student'
+            && request.resource.data.lecturerId == request.auth.uid
+            && request.resource.data.courseId is string
+            && ownsCourse(request.resource.data.courseId)));
 
-      allow update, delete: if false;
+      allow update: if signedIn()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if signedIn() && resource.data.recipientId == request.auth.uid;
     }
   }
 }

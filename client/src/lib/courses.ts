@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { storage } from '@/firebase/config';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { createStudentAnnouncement } from '@/lib/notifications';
+import { createStudentAnnouncement, createUserNotification } from '@/lib/notifications';
 
 export type Course = {
   id?: string;
@@ -24,22 +24,63 @@ export type Course = {
   lecturerId: string;
   lecturerName: string;
   description?: string;
+  category?: string;
+  level?: string;
+  published?: boolean;
+  isArchived?: boolean;
+  status?: 'draft' | 'published' | 'archived';
   createdAt?: any;
   updatedAt?: any;
 };
+
+export function normalizeCourse(course: Record<string, any>, id?: string): Course {
+  const storedTitle = typeof course.courseTitle === 'string' && course.courseTitle.trim()
+    ? course.courseTitle.trim()
+    : typeof course.title === 'string' && course.title.trim()
+      ? course.title.trim()
+      : typeof course.name === 'string' && course.name.trim()
+        ? course.name.trim()
+        : 'Untitled Course';
+  return { ...course, ...(id ? { id } : {}), courseTitle: storedTitle } as Course;
+}
+
+export async function getFacilitatorName(course: Course) {
+  if (!course.lecturerId) return course.lecturerName;
+  const profile = await getDoc(doc(db, 'users', course.lecturerId));
+  const fullName = profile.exists() ? profile.data().fullName : '';
+  return typeof fullName === 'string' && fullName.trim() ? fullName.trim() : course.lecturerName;
+}
 
 export async function getCourseByLecturerAndCode(lecturerId: string, courseCode: string): Promise<Course | null> {
   const q = query(collection(db, 'courses'), where('lecturerId', '==', lecturerId), where('courseCode', '==', courseCode));
   const snap = await getDocs(q);
   if (snap.empty) return null;
   const d = snap.docs[0];
-  return { id: d.id, ...(d.data() as any) } as Course;
+  return normalizeCourse(d.data(), d.id);
+}
+
+export async function getPublishedCourses() {
+  const snap = await getDocs(collection(db, 'courses'));
+  return snap.docs
+    .map((d) => normalizeCourse(d.data(), d.id))
+    .filter((course) => course.published !== false && course.isArchived !== true && course.status !== 'archived') as Course[];
+}
+
+export async function getActiveEnrollments(studentId: string) {
+  const snapshot = await getDocs(query(collection(db, 'enrollments'), where('studentId', '==', studentId)));
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...(item.data() as any) }))
+    .filter((enrollment) => enrollment.status !== 'unenrolled' && enrollment.status !== 'archived');
+}
+
+export async function setEnrollmentStatus(enrollmentId: string, status: 'active' | 'unenrolled') {
+  await updateDoc(doc(db, 'enrollments', enrollmentId), { status, updatedAt: serverTimestamp() });
 }
 
 export async function getCourseById(courseId: string): Promise<Course | null> {
   const d = await getDoc(doc(db, 'courses', courseId));
   if (!d.exists()) return null;
-  return { id: d.id, ...(d.data() as any) } as Course;
+  return normalizeCourse(d.data(), d.id);
 }
 
 export async function notifyCourseSubscribers(
@@ -53,9 +94,12 @@ export async function notifyCourseSubscribers(
   if (!courseSnapshot.exists()) return;
 
   const course = courseSnapshot.data() as Course;
-  const enrollmentsSnapshot = await getDocs(collection(db, 'enrollments'));
+  const enrollmentsSnapshot = await getDocs(query(
+    collection(db, 'enrollments'),
+    where('courseId', '==', courseId),
+    where('lecturerId', '==', course.lecturerId),
+  ));
   const targetStudentIds = enrollmentsSnapshot.docs
-    .filter((docSnap) => docSnap.data().courseId === courseId)
     .map((docSnap) => docSnap.data().studentId)
     .filter(Boolean);
 
@@ -82,14 +126,23 @@ export async function ensureCourseExists(course: Course): Promise<string> {
     lecturerId: course.lecturerId,
     lecturerName: course.lecturerName,
     description: course.description || '',
+    category: course.category || 'General',
+    level: course.level || 'Beginner',
+    published: course.published ?? true,
+    isArchived: course.isArchived ?? false,
+    status: course.status || (course.published === false ? 'draft' : 'published'),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 
   try {
-    const enrollmentsSnapshot = await getDocs(collection(db, 'enrollments'));
+    await createUserNotification(course.lecturerId, 'lecturer', 'Course created', `${course.courseTitle} was created as a draft.`, `/lecturer/courses/${ref.id}`, ref.id, 'success');
+    const enrollmentsSnapshot = await getDocs(query(
+      collection(db, 'enrollments'),
+      where('courseId', '==', ref.id),
+      where('lecturerId', '==', course.lecturerId),
+    ));
     const targetStudentIds = enrollmentsSnapshot.docs
-      .filter((docSnap) => docSnap.data().courseId === ref.id)
       .map((docSnap) => docSnap.data().studentId)
       .filter(Boolean);
 
@@ -106,6 +159,26 @@ export async function ensureCourseExists(course: Course): Promise<string> {
   }
 
   return ref.id;
+}
+
+export async function updateCourse(courseId: string, patch: Partial<Course>) {
+  await updateDoc(doc(db, 'courses', courseId), {
+    ...patch,
+    updatedAt: serverTimestamp(),
+  });
+  const course = await getCourseById(courseId);
+  if (course?.lecturerId) {
+    const title = patch.published === true ? 'Course published' : patch.published === false ? 'Course unpublished' : 'Course updated';
+    await createUserNotification(course.lecturerId, 'lecturer', title, `${course.courseTitle} was updated successfully.`, `/lecturer/courses/${courseId}`, courseId, 'success');
+  }
+}
+
+export async function archiveCourse(courseId: string) {
+  await updateCourse(courseId, { published: false, isArchived: true, status: 'archived' });
+}
+
+export async function unarchiveCourse(courseId: string) {
+  await updateCourse(courseId, { published: false, isArchived: false, status: 'draft' });
 }
 
 // Lessons stored under courses/{courseId}/lessons
@@ -211,13 +284,13 @@ export function subscribeLessons(courseId: string, publishedOnly: boolean, callb
 export async function getCoursesByLecturer(lecturerId: string) {
   const q = query(collection(db, 'courses'), where('lecturerId', '==', lecturerId));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Course[];
+  return snap.docs.map((d) => normalizeCourse(d.data(), d.id));
 }
 
 export function subscribeCoursesByLecturer(lecturerId: string, cb: (courses: Course[]) => void) {
   const q = query(collection(db, 'courses'), where('lecturerId', '==', lecturerId));
   const unsub = onSnapshot(q, (snap) => {
-    const courses = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Course[];
+    const courses = snap.docs.map((d) => normalizeCourse(d.data(), d.id));
     cb(courses);
   });
   return unsub;
@@ -234,6 +307,7 @@ export async function updateLesson(courseId: string, lessonId: string, patch: Pa
   if (patch.published === true && lessonSnapshot.data()?.published !== true && courseSnapshot.exists()) {
     const course = courseSnapshot.data() as Course;
     try {
+      await createUserNotification(course.lecturerId, 'lecturer', 'Content published', `${patch.title || lessonSnapshot.data()?.title || 'Learning content'} is now published in ${course.courseTitle}.`, `/lecturer/courses/${courseId}`, courseId, 'success');
       await notifyCourseSubscribers(
         courseId,
         'New lesson published',
@@ -320,6 +394,13 @@ export async function saveQuiz(courseId: string, quiz: Omit<CourseQuiz, 'courseI
     ...quizData,
     createdAt: serverTimestamp(),
   });
+  if (quiz.published) {
+    const course = await getCourseById(courseId);
+    if (course) {
+      await createUserNotification(course.lecturerId, 'lecturer', 'Quiz published', `${quiz.title} is now published in ${course.courseTitle}.`, `/lecturer/courses/${courseId}`, courseId, 'success');
+      await notifyCourseSubscribers(courseId, 'New quiz available', course.courseCode, `${quiz.title} is now available in ${course.courseTitle}.`, `/learning/${courseId}`);
+    }
+  }
   return created.id;
 }
 

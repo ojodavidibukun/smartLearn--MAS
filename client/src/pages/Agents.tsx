@@ -8,6 +8,10 @@ import { mockAgents } from '@/data/mockData';
 import { ArrowRight, Zap } from 'lucide-react';
 import { useState } from 'react';
 import MainLayout from '@/layouts/MainLayout';
+import { useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { getActiveEnrollments, getCourseById, getLessons, getStudentProgress, getStudentQuizAttempts, type QuizAttempt } from '@/lib/courses';
 
 const agentColors: Record<string, { bg: string; text: string; border: string }> = {
   AGENT001: { bg: 'bg-blue-50', text: 'text-blue-900', border: 'border-blue-200' },
@@ -20,13 +24,45 @@ const agentColors: Record<string, { bg: string; text: string; border: string }> 
 
 export default function Agents() {
   const [selectedAgent, setSelectedAgent] = useState(mockAgents[0]);
+  const { user } = useAuth();
+  const { profile } = useUserProfile();
+  const [assistant, setAssistant] = useState<{ advice: string[]; courses: number; completed: number; attempts: number; weakTopics: string[] }>({ advice: [], courses: 0, completed: 0, attempts: 0, weakTopics: [] });
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const loadAssistantContext = async () => {
+      const [enrollments, attempts] = await Promise.all([getActiveEnrollments(user.uid), getStudentQuizAttempts(user.uid)]);
+      const courseData = (await Promise.all(enrollments.map(async (enrollment: any) => {
+        if (!enrollment.courseId) return null;
+        const course = await getCourseById(enrollment.courseId);
+        if (!course?.id) return null;
+        const [lessons, progress] = await Promise.all([getLessons(course.id, true), getStudentProgress(course.id, user.uid)]);
+        const completed = Array.isArray((progress as any).completedLessons) ? (progress as any).completedLessons : [];
+        return { course, lessons, completed };
+      }))).filter(Boolean) as Array<{ course: any; lessons: any[]; completed: string[] }>;
+      const topicTotals = new Map<string, { correct: number; total: number }>();
+      attempts.filter((attempt: QuizAttempt) => attempt.status !== 'in_progress').forEach((attempt) => Object.entries(attempt.topicScores || {}).forEach(([topic, score]) => {
+        const current = topicTotals.get(topic) || { correct: 0, total: 0 };
+        topicTotals.set(topic, { correct: current.correct + Number(score.correct || 0), total: current.total + Number(score.total || 0) });
+      }));
+      const weakTopics = Array.from(topicTotals.entries()).map(([topic, score]) => ({ topic, percentage: score.total ? Math.round((score.correct / score.total) * 100) : 0 })).filter((item) => item.percentage < 60).sort((a, b) => a.percentage - b.percentage).map((item) => item.topic);
+      const completed = courseData.reduce((sum, item) => sum + item.completed.length, 0);
+      const advice = weakTopics.length
+        ? [`Your recent quiz results show that you need more practice with ${weakTopics[0]}. Review a related lesson before attempting another practice quiz.`]
+        : completed > 0
+          ? [`You have completed ${completed} lesson${completed === 1 ? '' : 's'} across your active courses. Continue with the next published lesson to keep progressing.`]
+          : ['Keep learning and taking quizzes. Your learning assistant will use your activity to provide personalized recommendations.'];
+      setAssistant({ advice, courses: courseData.length, completed, attempts: attempts.filter((attempt) => attempt.status !== 'in_progress').length, weakTopics });
+    };
+    loadAssistantContext().catch(() => setAssistant({ advice: ['Keep learning and taking quizzes. Your learning assistant will use your activity to provide personalized recommendations.'], courses: 0, completed: 0, attempts: 0, weakTopics: [] }));
+  }, [user?.uid]);
 
   return (
     <MainLayout>
       <div className="container py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">How SmartLearn Works</h1>
+          <h1 className="text-3xl font-bold mb-2">How YouLearn Works</h1>
           <p className="text-muted-foreground">
             Discover the specialized agents that power your personalized learning experience
           </p>
@@ -74,6 +110,16 @@ export default function Agents() {
                   <div className={`w-12 h-12 rounded-lg ${agentColors[selectedAgent.id].bg}`} />
                 </div>
               </div>
+
+              {selectedAgent.id === 'AGENT001' && (
+                <div className="mb-8 rounded-lg border border-primary/20 bg-primary/5 p-5">
+                  <h3 className="font-semibold">Your Personal Learning Assistant</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Hi {profile?.fullName?.split(' ')[0] || 'Learner'}. I use your learning activity and performance to help you understand what to learn next.</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Active courses</p><p className="text-xl font-semibold">{assistant.courses}</p></div><div><p className="text-xs text-muted-foreground">Lessons completed</p><p className="text-xl font-semibold">{assistant.completed}</p></div><div><p className="text-xs text-muted-foreground">Quiz attempts</p><p className="text-xl font-semibold">{assistant.attempts}</p></div></div>
+                  <div className="mt-4 space-y-2">{assistant.advice.map((advice) => <p key={advice} className="text-sm">{advice}</p>)}</div>
+                  {assistant.weakTopics.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{assistant.weakTopics.map((topic) => <span key={topic} className="rounded-full border border-destructive/30 px-2 py-1 text-xs text-destructive">Review: {topic}</span>)}</div>}
+                </div>
+              )}
 
               {/* Tabs for Organization */}
               <Tabs defaultValue="overview" className="w-full">
@@ -157,7 +203,7 @@ export default function Agents() {
             <h3 className="font-semibold mb-4">How Agents Collaborate</h3>
             <div className="space-y-4 text-sm text-muted-foreground">
               <p>
-                Each agent has a specific role in your learning journey. They work together to understand your needs, deliver personalized content, monitor your progress, and provide helpful guidance.
+                Each agent has a specific role in your learning journey. They use your activity to help you discover content, practice effectively, and decide what to learn next.
               </p>
               <ul className="space-y-2">
                 <li className="flex gap-2">
@@ -170,7 +216,7 @@ export default function Agents() {
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary font-bold">3.</span>
-                  <span>Your progress is continuously monitored</span>
+                  <span>Your own progress informs your next learning actions</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary font-bold">4.</span>
@@ -181,27 +227,27 @@ export default function Agents() {
           </Card>
 
           <Card className="p-6">
-            <h3 className="font-semibold mb-4">For Educators</h3>
+            <h3 className="font-semibold mb-4">For Facilitators</h3>
             <div className="space-y-4 text-sm text-muted-foreground">
               <p>
-                Instructors get comprehensive insights into class performance and student engagement, enabling data-driven decisions to support student success.
+                Facilitators create and publish quality learning experiences. Student performance insights remain private to each learner and power their personal recommendations.
               </p>
               <ul className="space-y-2">
                 <li className="flex gap-2">
                   <span className="text-accent font-bold">•</span>
-                  <span>Real-time class analytics and trends</span>
+                  <span>Build structured courses and lessons</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-accent font-bold">•</span>
-                  <span>Early identification of students needing support</span>
+                  <span>Publish videos, materials, and quizzes</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-accent font-bold">•</span>
-                  <span>Engagement and completion metrics</span>
+                  <span>Keep course content current and useful</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-accent font-bold">•</span>
-                  <span>Automated monitoring and reporting</span>
+                  <span>Manage draft, published, and archived courses</span>
                 </li>
               </ul>
             </div>

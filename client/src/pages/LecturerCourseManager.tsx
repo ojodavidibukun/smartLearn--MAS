@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
 import MainLayout from '@/layouts/MainLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { getCourseByLecturerAndCode, ensureCourseExists, addLesson, getLessons, updateLesson, deleteLesson, uploadMaterial, appendMaterialToLesson, getCoursesByLecturer, subscribeCoursesByLecturer } from '@/lib/courses';
+import { ensureCourseExists, addLesson, getLessons, updateLesson, updateCourse, archiveCourse, deleteLesson, uploadMaterial, appendMaterialToLesson, subscribeCoursesByLecturer } from '@/lib/courses';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
 export default function LecturerCourseManager() {
   const { user } = useAuth();
-  const [code, setCode] = useState('');
+  const { profile } = useUserProfile();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [level, setLevel] = useState('Beginner');
+  const [published, setPublished] = useState(false);
   const [courseId, setCourseId] = useState<string | null>(null);
   const [coursesList, setCoursesList] = useState<any[]>([]);
   const [lessons, setLessons] = useState<any[]>([]);
@@ -25,17 +29,10 @@ export default function LecturerCourseManager() {
   useEffect(() => {
     const load = async () => {
       if (!user?.uid) return;
-      if (!code || !title) return;
-      const existing = await getCourseByLecturerAndCode(user.uid, code);
-      if (existing?.id) {
-        setCourseId(existing.id);
-        const ls = await getLessons(existing.id);
-        ls.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setLessons(ls);
-      }
+      if (!courseId || !title) return;
     };
     load();
-  }, [user, code, title]);
+  }, [user, courseId, title]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -44,7 +41,7 @@ export default function LecturerCourseManager() {
       // if a courseId is selected but removed, clear selection
       if (courseId && list.every((c:any) => c.id !== courseId)) {
         setCourseId(null);
-        setCode(''); setTitle(''); setDescription(''); setLessons([]);
+        setTitle(''); setDescription(''); setCategory(''); setLevel('Beginner'); setPublished(false); setLessons([]);
       }
     });
     return () => unsub();
@@ -52,12 +49,14 @@ export default function LecturerCourseManager() {
 
   const createCourse = async () => {
     if (!user?.uid) return setMessage('Sign in first');
-    if (!code || !title) return setMessage('Provide code and title');
+    if (!title) return setMessage('Provide a course title');
     setLoading(true);
     try {
-      const id = await ensureCourseExists({ lecturerId: user.uid, lecturerName: user.displayName || 'Lecturer', courseCode: code, courseTitle: title, description });
+      const facilitatorName = profile?.fullName?.trim() || user.displayName?.trim();
+      const id = courseId || await ensureCourseExists({ lecturerId: user.uid, lecturerName: facilitatorName || user.email || user.uid, courseCode: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40) || `course-${Date.now()}`, courseTitle: title, description, category: category || 'General', level, published: false });
+      if (courseId) await updateCourse(courseId, { courseTitle: title, description, category: category || 'General', level, published });
       setCourseId(id);
-      setMessage('Course created/ensured.');
+      setMessage(published ? 'Course saved and published.' : 'Course saved as draft.');
     } catch (e: any) {
       setMessage(e?.message || String(e));
     } finally { setLoading(false); }
@@ -122,6 +121,17 @@ export default function LecturerCourseManager() {
     finally { setLoading(false); }
   };
 
+  const onArchiveCourse = async () => {
+    if (!courseId || !window.confirm('Remove this course? This course will no longer be available for new students to discover or enroll in. Existing learning records will be preserved.')) return;
+    setLoading(true);
+    try {
+      await archiveCourse(courseId);
+      setPublished(false);
+      setMessage('Course archived. Existing learning records were preserved.');
+    } catch (e: any) { setMessage(e?.message || String(e)); }
+    finally { setLoading(false); }
+  };
+
   return (
     <MainLayout>
       <div className="container py-8">
@@ -138,29 +148,39 @@ export default function LecturerCourseManager() {
                   // load course doc
                   const c = coursesList.find((x:any) => x.id === val);
                   if (c) {
-                    setCode(c.courseCode || '');
                     setTitle(c.courseTitle || '');
                     setDescription(c.description || '');
+                    setCategory(c.category || '');
+                    setLevel(c.level || 'Beginner');
+                    setPublished(c.published !== false);
                     const ls = await getLessons(val);
                     ls.sort((a,b)=> (a.order||0)-(b.order||0));
                     setLessons(ls);
                   }
                 } else {
                   // clear fields for new
-                  setCode(''); setTitle(''); setDescription(''); setLessons([]);
+                  setTitle(''); setDescription(''); setCategory(''); setLevel('Beginner'); setPublished(false); setLessons([]);
                 }
               }} className="w-full border rounded p-2">
                 <option value="">-- Create New Course --</option>
                 {coursesList.map((c:any) => (
-                  <option key={c.id} value={c.id}>{c.courseTitle} ({c.courseCode})</option>
+                  <option key={c.id} value={c.id}>{c.courseTitle}</option>
                 ))}
               </select>
             </div>
-            <Input placeholder="Course code (e.g. CPE310)" value={code} onChange={(e:any)=>setCode(e.target.value)} className="mb-2" />
             <Input placeholder="Course title" value={title} onChange={(e:any)=>setTitle(e.target.value)} className="mb-2" />
             <Input placeholder="Short description" value={description} onChange={(e:any)=>setDescription(e.target.value)} className="mb-2" />
+            <Input placeholder="Topics or category (e.g. Python, programming)" value={category} onChange={(e:any)=>setCategory(e.target.value)} className="mb-2" />
+            <select value={level} onChange={(e:any)=>setLevel(e.target.value)} className="mb-2 w-full rounded border p-2">
+              <option value="Beginner">Beginner</option>
+              <option value="Intermediate">Intermediate</option>
+              <option value="Advanced">Advanced</option>
+            </select>
+            <label className="mb-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={published} onChange={(e:any)=>setPublished(e.target.checked)} /> Make this course visible in Explore</label>
+            <div className="mb-2 text-sm font-medium">Status: {coursesList.find((course) => course.id === courseId)?.isArchived ? 'Archived' : published ? 'Published' : 'Draft'}</div>
             <div className="flex gap-2 mt-2">
-              <Button onClick={createCourse} disabled={loading}>{loading ? 'Saving...' : 'Create / Select Course'}</Button>
+              <Button onClick={createCourse} disabled={loading}>{loading ? 'Saving...' : 'Save course'}</Button>
+              {courseId && !coursesList.find((course) => course.id === courseId)?.isArchived && <Button variant="destructive" onClick={onArchiveCourse} disabled={loading}>Archive course</Button>}
             </div>
             {message && <div className="text-sm text-muted-foreground mt-2">{message}</div>}
           </Card>

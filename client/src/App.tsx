@@ -9,11 +9,15 @@ import Login from "./pages/Login";
 import loginDummy from "./pages/Logindummy"; // dummy login page
 import signUp from "./pages/signUp";
 import StudentDashboard from "./pages/StudentDashboard";
+import Explore from "./pages/Explore";
 import LecturerDashboard from "./pages/LecturerDashboard";
 import LecturerProfile from "./pages/LecturerProfile";
 import DebugUserLookup from "./pages/DebugUserLookup";
 import CourseDetails from "./pages/CourseDetails";
 import LecturerCourseManager from "./pages/LecturerCourseManager";
+import LecturerLearning from "./pages/LecturerLearning";
+import FacilitatorCourses from "./pages/FacilitatorCourses";
+import CreateCourse from "./pages/CreateCourse";
 import Learning from "./pages/Learning";
 import Performance from "./pages/Performance";
 import Agents from "./pages/Agents";
@@ -63,6 +67,11 @@ function Router() {
           <DashboardRouter />
         </ProtectedRoute>
       </Route>
+      <Route path="/explore">
+        <ProtectedRoute>
+          <Explore />
+        </ProtectedRoute>
+      </Route>
       <Route path="/lecturer-profile">
         <ProtectedRoute>
           <LecturerProfile />
@@ -78,7 +87,23 @@ function Router() {
           <LecturerCourseManager />
         </ProtectedRoute>
       </Route>
+      <Route path="/lecturer/courses">
+        <ProtectedRoute>
+          <FacilitatorCourses />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/lecturer/create-course">
+        <ProtectedRoute>
+          <CreateCourse />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/lecturer/courses/:courseId">
+        <ProtectedRoute>
+          <LecturerLearning />
+        </ProtectedRoute>
+      </Route>
       <Route path="/learning" component={Learning} />
+      <Route path="/learning/:courseId" component={Learning} />
       <Route path="/performance" component={Performance} />
       <Route path="/agents" component={Agents} />
       <Route path="/debug/user-lookup">

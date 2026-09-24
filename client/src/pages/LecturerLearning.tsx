@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Edit3, ExternalLink, Plus, Trash2, Video } from 'lucide-react';
 import MainLayout from '@/layouts/MainLayout';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRoute } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,9 @@ import {
   getQuizzes,
   saveQuiz,
   subscribeCoursesByLecturer,
+  updateCourse,
+  archiveCourse,
+  unarchiveCourse,
   updateLesson,
   type CourseQuiz,
   type QuizQuestion,
@@ -52,6 +56,8 @@ function toYoutubeEmbed(url: string) {
 
 export default function LecturerLearning() {
   const { user } = useAuth();
+  const [, routeParams] = useRoute('/lecturer/courses/:courseId');
+  const routeCourseId = (routeParams as any)?.courseId as string | undefined;
   const [courses, setCourses] = useState<Course[]>([]);
   const [courseId, setCourseId] = useState('');
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -68,17 +74,31 @@ export default function LecturerLearning() {
   const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [courseTitle, setCourseTitle] = useState('');
+  const [courseDescription, setCourseDescription] = useState('');
+  const [courseCategory, setCourseCategory] = useState('');
+  const [courseLevel, setCourseLevel] = useState('Beginner');
+  const [coursePublished, setCoursePublished] = useState(false);
 
   const selectedCourse = useMemo(() => courses.find((course) => course.id === courseId), [courses, courseId]);
   const courseTopics = useMemo(() => Array.from(new Set(lessons.map((lesson) => lesson.topic?.trim()).filter(Boolean) as string[])).sort(), [lessons]);
 
   useEffect(() => {
+    if (!selectedCourse) return;
+    setCourseTitle(selectedCourse.courseTitle || '');
+    setCourseDescription(selectedCourse.description || '');
+    setCourseCategory(selectedCourse.category || '');
+    setCourseLevel(selectedCourse.level || 'Beginner');
+    setCoursePublished(selectedCourse.published !== false && selectedCourse.isArchived !== true);
+  }, [selectedCourse]);
+
+  useEffect(() => {
     if (!user?.uid) return;
     return subscribeCoursesByLecturer(user.uid, (items) => {
       setCourses(items);
-      setCourseId((current) => current || items[0]?.id || '');
+      setCourseId((current) => current || routeCourseId || items[0]?.id || '');
     });
-  }, [user?.uid]);
+  }, [user?.uid, routeCourseId]);
 
   useEffect(() => {
     if (!courseId) {
@@ -198,18 +218,74 @@ export default function LecturerLearning() {
     setQuestions((current) => current.map((question, questionIndex) => questionIndex === index ? { ...question, ...patch } : question));
   };
 
+  const saveCourseDetails = async () => {
+    if (!courseId || !courseTitle.trim()) return setMessage('Add a course title before saving.');
+    setSaving(true);
+    try {
+      await updateCourse(courseId, { courseTitle: courseTitle.trim(), description: courseDescription.trim(), category: courseCategory.trim() || 'General', level: courseLevel, published: coursePublished, status: coursePublished ? 'published' : 'draft' });
+      setMessage('Course details updated.');
+    } catch (error: any) {
+      setMessage(error?.message || 'Unable to update course details.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const archiveSelectedCourse = async () => {
+    if (!courseId || !window.confirm('Archive this course? It will leave Explore, while existing learning records remain preserved.')) return;
+    setSaving(true);
+    try {
+      await archiveCourse(courseId);
+      setCoursePublished(false);
+      setMessage('Course archived. Existing learning records were preserved.');
+    } catch (error: any) {
+      setMessage(error?.message || 'Unable to archive course.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unarchiveSelectedCourse = async () => {
+    if (!courseId) return;
+    setSaving(true);
+    try {
+      await unarchiveCourse(courseId);
+      setCoursePublished(false);
+      setMessage('Course restored as a draft. Publish it when it is ready for Explore.');
+    } catch (error: any) {
+      setMessage(error?.message || 'Unable to restore course.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (!selectedCourse) {
-    return <MainLayout><div className="container py-8"><h1 className="text-3xl font-bold">Learning workspace</h1><p className="mt-2 text-muted-foreground">Create or add a course from your lecturer profile to manage learning content.</p></div></MainLayout>;
+    return <MainLayout><div className="container py-8"><h1 className="text-3xl font-bold">Course Management</h1><p className="mt-2 text-muted-foreground">Create a course first, then manage its lessons, videos, materials, and quizzes here.</p></div></MainLayout>;
   }
 
   return (
     <MainLayout>
       <div className="container py-8 space-y-8">
         <div>
-          <h1 className="text-3xl font-bold">Teaching and assessment</h1>
-          <p className="text-muted-foreground">Publish lessons, resources, and quizzes for your courses.</p>
+          <h1 className="text-3xl font-bold">Course Management</h1>
+          <p className="text-muted-foreground">Everything for {selectedCourse.courseTitle} is managed from this page.</p>
         </div>
         {message && <div className="rounded-md border border-primary/20 bg-primary/5 px-4 py-3 text-sm">{message}</div>}
+
+        <Card className="p-5">
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div><h2 className="font-semibold">{selectedCourse.courseTitle}</h2><p className="text-sm text-muted-foreground">Facilitator: {selectedCourse.lecturerName}</p></div>
+            <Badge variant={selectedCourse.isArchived ? 'destructive' : coursePublished ? 'outline' : 'secondary'}>{selectedCourse.isArchived ? 'Archived' : coursePublished ? 'Published' : 'Draft'}</Badge>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input placeholder="Course title" value={courseTitle} onChange={(event) => setCourseTitle(event.target.value)} />
+            <Input placeholder="Topics or category" value={courseCategory} onChange={(event) => setCourseCategory(event.target.value)} />
+            <textarea className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm md:col-span-2" placeholder="Course description" value={courseDescription} onChange={(event) => setCourseDescription(event.target.value)} />
+            <select value={courseLevel} onChange={(event) => setCourseLevel(event.target.value)} className="rounded-md border border-input bg-background px-3 py-2 text-sm"><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={coursePublished} disabled={!!selectedCourse.isArchived} onChange={(event) => setCoursePublished(event.target.checked)} /> Published and visible in Explore</label>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2"><Button onClick={saveCourseDetails} disabled={saving}>Save Course Changes</Button>{selectedCourse.isArchived ? <Button variant="outline" onClick={unarchiveSelectedCourse} disabled={saving}>Unarchive Course</Button> : <Button variant="destructive" onClick={archiveSelectedCourse} disabled={saving}>Archive Course</Button>}</div>
+        </Card>
 
         <Card className="p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

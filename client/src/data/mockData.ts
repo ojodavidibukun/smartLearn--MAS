@@ -271,12 +271,12 @@ export const mockStudentPerformance: StudentPerformance = {
 export const mockAgents: AgentInfo[] = [
   {
     id: 'AGENT001',
-    name: 'Student Agent',
-    purpose: 'Manages student profile, enrollment, and personal learning preferences',
-    inputs: ['Student ID', 'Enrollment Data', 'Learning Preferences'],
-    processing: 'Aggregates student information and maintains learning profile state',
-    outputs: ['Student Profile', 'Enrollment Status', 'Preference Settings'],
-    relatedAgents: ['AGENT002', 'AGENT003', 'AGENT006'],
+    name: 'Student Learning Assistant',
+    purpose: 'Acts as a personal learning assistant using the student\'s own activity and performance',
+    inputs: ['Enrolled Courses', 'Course Progress', 'Quiz Attempts', 'Topic Performance', 'Recent Learning Activity'],
+    processing: 'Finds review areas, next lessons, and useful learning actions from the student\'s history',
+    outputs: ['Personal Learning Advice', 'Weak Topic Guidance', 'Next Learning Actions'],
+    relatedAgents: ['AGENT002', 'AGENT003', 'AGENT004', 'AGENT005'],
   },
   {
     id: 'AGENT002',
@@ -289,12 +289,12 @@ export const mockAgents: AgentInfo[] = [
   },
   {
     id: 'AGENT003',
-    name: 'Performance Monitoring Agent',
-    purpose: 'Tracks student performance metrics and identifies at-risk students',
-    inputs: ['Quiz Scores', 'Attendance Records', 'Assignment Submissions'],
-    processing: 'Calculates performance indicators and risk levels using rule-based logic',
-    outputs: ['Performance Report', 'Risk Assessment', 'Performance Trends'],
-    relatedAgents: ['AGENT001', 'AGENT004', 'AGENT005'],
+    name: 'Student Performance Agent',
+    purpose: 'Explains the student\'s own quiz and topic performance',
+    inputs: ['Quiz Scores', 'Topic Results', 'Completed Lessons'],
+    processing: 'Summarizes personal mastery and identifies topics that need review',
+    outputs: ['Personal Performance Summary', 'Weak Topics', 'Revision Signals'],
+    relatedAgents: ['AGENT001', 'AGENT004'],
   },
   {
     id: 'AGENT004',
@@ -316,12 +316,12 @@ export const mockAgents: AgentInfo[] = [
   },
   {
     id: 'AGENT006',
-    name: 'Lecturer Agent',
-    purpose: 'Provides instructors with class analytics and student performance insights',
-    inputs: ['Class Performance Data', 'Student Analytics', 'Engagement Metrics'],
-    processing: 'Aggregates and analyzes class-level data for instructor dashboard',
-    outputs: ['Class Analytics', 'Student Insights', 'Engagement Reports'],
-    relatedAgents: ['AGENT001', 'AGENT003', 'AGENT004', 'AGENT005'],
+    name: 'Content Agent',
+    purpose: 'Helps connect published learning resources to student needs',
+    inputs: ['Published Lessons', 'Published Quizzes', 'Course Topics'],
+    processing: 'Links available course content with personal learning recommendations',
+    outputs: ['Relevant Resources', 'Practice Suggestions', 'Course Discovery'],
+    relatedAgents: ['AGENT001', 'AGENT002', 'AGENT004'],
   },
 ];
 

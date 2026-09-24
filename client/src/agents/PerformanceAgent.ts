@@ -1,20 +1,20 @@
-// SmartLearn MAS - Performance Monitoring Agent
+// YouLearn student performance agent
 // Backend developers: Replace placeholder logic with actual API calls
 
 import type { StudentPerformance } from '@/types';
 
 /**
- * Performance Monitoring Agent
- * Tracks student performance metrics and identifies at-risk students
+ * Student Performance Agent
+ * Summarizes the current student's own quiz and topic performance
  *
  * Inputs:
  * - Quiz Scores
- * - Attendance Records
- * - Assignment Submissions
+ * - Topic Scores
+ * - Completed Lessons
  *
  * Processing:
  * - Calculates performance indicators
- * - Identifies at-risk students
+ * - Identifies personal review areas
  *
  * Outputs:
  * - Performance Report
@@ -24,11 +24,11 @@ import type { StudentPerformance } from '@/types';
 
 export class PerformanceAgent {
   /**
-   * Calculate student performance metrics
+  * Calculate personal learning metrics
    * TODO: Replace with backend calculation
    */
   async calculatePerformance(studentId: string): Promise<StudentPerformance> {
-    // Placeholder: In production, fetch from backend
+    // Placeholder: In production, fetch the student's own records
     // const response = await fetch(`/api/students/${studentId}/performance`);
     // return response.json();
 
@@ -43,8 +43,8 @@ export class PerformanceAgent {
   }
 
   /**
-   * Assess risk level
-   * Rule-based logic for risk assessment
+  * Assess personal review level
+  * Rule-based logic for review guidance
    */
   assessRiskLevel(
     averageScore: number,
@@ -83,7 +83,7 @@ export class PerformanceAgent {
   }
 
   /**
-   * Check if student is at risk
+  * Check if the student needs review
    */
   isStudentAtRisk(performance: StudentPerformance): boolean {
     return performance.riskLevel === 'high' || performance.riskLevel === 'medium';

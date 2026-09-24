@@ -1,365 +1,119 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Search, UserRoundCheck, GraduationCap } from 'lucide-react';
+import { ArrowRight, BookOpen, Compass, Sparkles } from 'lucide-react';
 import { useLocation } from 'wouter';
 import MainLayout from '@/layouts/MainLayout';
-import { useUserProfile } from '../hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
-import { db } from '@/firebase/config';
-import { collection, doc, getDocs, query, setDoc, where, serverTimestamp } from 'firebase/firestore';
-import {
-  buildEnrollmentId,
-  matchesCourseSearch,
-  normalizeAcademicPeriod,
-  normalizeCourseEntry,
-} from '@/lib/courseEnrollment';
-import { getCourseByLecturerAndCode } from '@/lib/courses';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { getActiveEnrollments, getCourseById, getFacilitatorName, getLessons, getPublishedCourses, getStudentProgress, getStudentQuizAttempts, type Course, type QuizAttempt } from '@/lib/courses';
 
-interface LecturerCourseOffer {
-  lecturerId: string;
-  lecturerName: string;
-  courses: Array<{ code: string; title: string }>;
-}
+type LearningCourse = Course & { completed: number; total: number; enrollmentId: string };
 
-interface EnrolledCourse {
-  id: string;
-  studentId: string;
-  lecturerId: string;
-  lecturerName: string;
-  courseCode: string;
-  courseTitle: string;
+type TopicScore = { topic: string; percentage: number };
+
+function timestampValue(value: any) {
+  if (value?.toMillis) return value.toMillis();
+  const parsed = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 export default function StudentDashboard() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const { profile, loading } = useUserProfile();
-  const [availableLecturers, setAvailableLecturers] = useState<LecturerCourseOffer[]>([]);
-  const [registeredCourses, setRegisteredCourses] = useState<EnrolledCourse[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCourses, setSelectedCourses] = useState<Record<string, boolean>>({});
-  const [savingEnrollments, setSavingEnrollments] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('');
-  const [academicPeriod, setAcademicPeriod] = useState(() =>
-    normalizeAcademicPeriod({ semester: 'First Semester', session: '2026/2027' }),
-  );
+  const { profile, loading: profileLoading } = useUserProfile();
+  const [myLearning, setMyLearning] = useState<LearningCourse[]>([]);
+  const [recommendations, setRecommendations] = useState<Course[]>([]);
+  const [weakTopics, setWeakTopics] = useState<TopicScore[]>([]);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!user?.uid) return;
-
+    if (!user?.uid) return;
+    let active = true;
+    const load = async () => {
+      setLoading(true);
       try {
-        const usersSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'lecturer')));
-        const lecturers = usersSnapshot.docs
-          .filter((userDoc) => userDoc.data().role === 'lecturer')
-          .map((userDoc) => {
-            const data = userDoc.data();
-            const offeredCourses = Array.isArray(data.offeredCourses)
-              ? data.offeredCourses.filter((course: { code?: string; title?: string }) => {
-                  const normalized = normalizeCourseEntry(course);
-                  return normalized.code && normalized.title;
-                })
-              : [];
-
-            return {
-              lecturerId: userDoc.id,
-              lecturerName: data.fullName || 'Lecturer',
-              courses: offeredCourses,
-            } as LecturerCourseOffer;
-          })
-          .filter((lecturer) => lecturer.courses.length > 0);
-
-        setAvailableLecturers(lecturers);
-        const enrollmentsQuery = query(collection(db, 'enrollments'), where('studentId', '==', user.uid));
-        const enrollmentSnapshot = await getDocs(enrollmentsQuery);
-        setRegisteredCourses(
-          enrollmentSnapshot.docs.map((docSnapshot) => ({
-            id: docSnapshot.id,
-            ...(docSnapshot.data() as any),
-          })) as EnrolledCourse[],
-        );
+        const [enrollments, publishedCourses, attempts] = await Promise.all([
+          getActiveEnrollments(user.uid),
+          getPublishedCourses(),
+          getStudentQuizAttempts(user.uid),
+        ]);
+        const enrolledCourses = (await Promise.all(enrollments.map(async (enrollment: any) => {
+          if (!enrollment.courseId) return null;
+          const course = await getCourseById(enrollment.courseId);
+          if (!course?.id || course.isArchived === true || course.status === 'archived') return null;
+          const [progress, lessons] = await Promise.all([getStudentProgress(course.id, user.uid), getLessons(course.id, true)]);
+          const completedLessons = Array.isArray((progress as any).completedLessons) ? (progress as any).completedLessons : [];
+          return { ...course, lecturerName: await getFacilitatorName(course), completed: completedLessons.length, total: lessons.length, enrollmentId: enrollment.id, updatedAt: (progress as any).updatedAt } as LearningCourse;
+        }))).filter(Boolean) as LearningCourse[];
+        const enrolledIds = new Set(enrolledCourses.map((course) => course.id));
+        const topicTotals = new Map<string, { correct: number; total: number }>();
+        attempts.filter((attempt) => attempt.status !== 'in_progress').forEach((attempt: QuizAttempt) => {
+          Object.entries(attempt.topicScores || {}).forEach(([topic, score]) => {
+            const current = topicTotals.get(topic) || { correct: 0, total: 0 };
+            topicTotals.set(topic, { correct: current.correct + Number(score.correct || 0), total: current.total + Number(score.total || 0) });
+          });
+        });
+        const weak = Array.from(topicTotals.entries())
+          .map(([topic, score]) => ({ topic, percentage: score.total ? Math.round((score.correct / score.total) * 100) : 0 }))
+          .filter((item) => item.percentage < 60)
+          .sort((a, b) => a.percentage - b.percentage)
+          .slice(0, 5);
+        if (!active) return;
+        setMyLearning(enrolledCourses);
+        setRecommendations(await Promise.all(publishedCourses.filter((course) => !enrolledIds.has(course.id)).slice(0, 4).map(async (course) => ({ ...course, lecturerName: await getFacilitatorName(course) }))));
+        setWeakTopics(weak);
+        setRecentActivity([...enrolledCourses].sort((a, b) => timestampValue((b as any).updatedAt) - timestampValue((a as any).updatedAt)).slice(0, 3));
       } catch (error) {
-        console.error('Unable to load course enrollment data:', error);
+        console.error('Unable to load student dashboard:', error);
+      } finally {
+        if (active) setLoading(false);
       }
     };
+    load();
+    return () => { active = false; };
+  }, [user?.uid]);
 
-    fetchDashboardData();
-  }, [user, profile]);
+  const overallProgress = useMemo(() => {
+    const total = myLearning.reduce((sum, course) => sum + course.total, 0);
+    const completed = myLearning.reduce((sum, course) => sum + course.completed, 0);
+    return total ? Math.round((completed / total) * 100) : 0;
+  }, [myLearning]);
 
-  const filteredLecturers = useMemo(() => {
-    return availableLecturers
-      .map((lecturer) => ({
-        ...lecturer,
-        courses: lecturer.courses.filter((course) => {
-          const normalized = normalizeCourseEntry(course);
-          return matchesCourseSearch(normalized, searchQuery);
-        }),
-      }))
-      .filter((lecturer) => lecturer.courses.length > 0);
-  }, [availableLecturers, searchQuery]);
-
-  const handleCourseToggle = (lecturerId: string, course: { code: string; title: string }) => {
-    const key = `${lecturerId}__${normalizeCourseEntry(course).code}`;
-    setSelectedCourses((current) => ({
-      ...current,
-      [key]: !current[key],
-    }));
-  };
-
-  const handleEnrollSelectedCourses = async () => {
-    if (!user?.uid) return;
-
-    const selectedKeys = Object.entries(selectedCourses)
-      .filter(([, isSelected]) => isSelected)
-      .map(([key]) => key);
-
-    if (!selectedKeys.length) {
-      setStatusMessage('Select at least one course before enrolling.');
-      return;
-    }
-
-    setSavingEnrollments(true);
-    setStatusMessage('');
-
-    try {
-      const lecturerLookup = new Map(
-        availableLecturers.map((lecturer) => [lecturer.lecturerId, lecturer]),
-      );
-
-      for (const key of selectedKeys) {
-        const [lecturerId, courseCode] = key.split('__');
-        const lecturer = lecturerLookup.get(lecturerId);
-        const course = lecturer?.courses.find((item) => normalizeCourseEntry(item).code === courseCode);
-
-        if (!lecturer || !course) continue;
-
-        const canonicalCourse = await getCourseByLecturerAndCode(lecturerId, courseCode);
-        if (!canonicalCourse?.id) continue;
-
-        const enrollmentId = buildEnrollmentId(user.uid, lecturerId, courseCode, academicPeriod);
-        await setDoc(doc(db, 'enrollments', enrollmentId), {
-          studentId: user.uid,
-          courseId: canonicalCourse.id,
-          studentName: profile?.fullName || 'Student',
-          lecturerId,
-          lecturerName: lecturer.lecturerName,
-          courseCode: course.code,
-          courseTitle: course.title,
-          semester: academicPeriod.semester,
-          session: academicPeriod.session,
-          academicYear: academicPeriod.session,
-          status: 'active',
-          createdAt: serverTimestamp(),
-        });
-      }
-
-      const enrollmentSnapshot = await getDocs(
-        query(collection(db, 'enrollments'), where('studentId', '==', user.uid)),
-      );
-      setRegisteredCourses(
-        enrollmentSnapshot.docs.map((docSnapshot) => ({
-          id: docSnapshot.id,
-          ...(docSnapshot.data() as any),
-        })) as EnrolledCourse[],
-      );
-      setStatusMessage('Enrollment successful. Your selected courses are now saved.');
-      setSelectedCourses({});
-    } catch (error) {
-      console.error('Enrollment failed:', error);
-      setStatusMessage('Enrollment failed. Please try again.');
-    } finally {
-      setSavingEnrollments(false);
-    }
-  };
-
-  if (loading) return <p>Loading...</p>;
+  if (profileLoading || loading) return <MainLayout><div className="container py-8">Loading your learning dashboard...</div></MainLayout>;
 
   return (
     <MainLayout>
-      <div className="container py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-1">Welcome, {profile?.fullName?.split(' ')[0]}!</h1>
-          <p className="text-muted-foreground">Browse available lecturers and register for courses.</p>
-        </div>
-
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Available Lecturers</p>
-            <p className="text-3xl font-bold">{availableLecturers.length}</p>
-          </Card>
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Registered Courses</p>
-            <p className="text-3xl font-bold">{registeredCourses.length}</p>
-          </Card>
-          <Card className="p-6">
-            <p className="text-sm text-muted-foreground mb-2">Search</p>
-            <p className="text-lg font-bold">{searchQuery || 'All courses'}</p>
-          </Card>
-        </div>
-
-        {statusMessage && (
-          <div className="mb-6 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {statusMessage}
+      <div className="container space-y-8 py-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-wide text-primary">My Learning</p>
+            <h1 className="text-3xl font-bold">Welcome back, {profile?.fullName?.split(' ')[0] || 'Learner'}</h1>
+            <p className="mt-2 text-muted-foreground">Continue where you stopped and discover your next useful lesson.</p>
           </div>
-        )}
-
-        <div className="grid gap-8 lg:grid-cols-[1.3fr_0.7fr]">
-          <section>
-            <div className="mb-4 flex items-center gap-3 rounded-md border border-border bg-card p-3">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search by course code or course name"
-                className="border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
-              />
-            </div>
-
-            <div className="space-y-5">
-              {filteredLecturers.length === 0 ? (
-                <Card className="p-6 text-sm text-muted-foreground">
-                  No courses are currently available for your search.
-                </Card>
-              ) : (
-                filteredLecturers.map((lecturer) => (
-                  <Card key={lecturer.lecturerId} className="p-5">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-full bg-primary/10 p-2 text-primary">
-                          <UserRoundCheck className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <h2 className="font-semibold">{lecturer.lecturerName}</h2>
-                          <p className="text-sm text-muted-foreground">Lecturer</p>
-                        </div>
-                      </div>
-                      <Badge variant="secondary">{lecturer.courses.length} course{lecturer.courses.length === 1 ? '' : 's'}</Badge>
-                    </div>
-
-                    <div className="space-y-3">
-                      {lecturer.courses.map((course) => {
-                        const normalized = normalizeCourseEntry(course);
-                        const key = `${lecturer.lecturerId}__${normalized.code}`;
-                        const isSelected = !!selectedCourses[key];
-
-                        return (
-                          <div
-                            key={normalized.key}
-                            className={`flex items-center justify-between rounded-lg border p-3 ${
-                              isSelected ? 'border-primary bg-primary/5' : 'border-border bg-secondary/20'
-                            }`}
-                          >
-                            <div>
-                              <p className="font-medium">{normalized.code}</p>
-                              <p className="text-sm text-muted-foreground">{normalized.title}</p>
-                            </div>
-                            <Button
-                              variant={isSelected ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => handleCourseToggle(lecturer.lecturerId, course)}
-                            >
-                              {isSelected ? 'Selected' : 'Select'}
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Card>
-                ))
-              )}
-            </div>
-          </section>
-
-          <aside className="space-y-6">
-            <Card className="p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <GraduationCap className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold">Your registered courses</h2>
-              </div>
-
-              {registeredCourses.length === 0 ? (
-                <p className="text-sm text-muted-foreground">You have not enrolled in any course yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {registeredCourses.map((course) => (
-                    <div key={course.id} className="rounded-lg border border-border bg-secondary/20 p-3 flex items-start justify-between">
-                      <div>
-                        <p className="font-medium">{course.courseCode}</p>
-                        <p className="text-sm text-muted-foreground">{course.courseTitle}</p>
-                        <p className="mt-2 text-xs text-muted-foreground">Lecturer: {course.lecturerName}</p>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Button size="sm" onClick={async () => {
-                          const c = await getCourseByLecturerAndCode(course.lecturerId, course.courseCode);
-                          if (c?.id) {
-                            setLocation(`/course/${c.id}`);
-                          } else {
-                            setStatusMessage('No course content published yet.');
-                          }
-                        }}>Open</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-
-            <Card className="p-5">
-              <h2 className="mb-4 text-lg font-semibold">Register selected courses</h2>
-
-              <div className="mb-4 space-y-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Semester</label>
-                  <select
-                    value={academicPeriod.semester}
-                    onChange={(event) =>
-                      setAcademicPeriod((current) => ({
-                        ...current,
-                        semester: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    <option value="First Semester">First Semester</option>
-                    <option value="Second Semester">Second Semester</option>
-                    <option value="Summer Semester">Summer Semester</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Session</label>
-                  <select
-                    value={academicPeriod.session}
-                    onChange={(event) =>
-                      setAcademicPeriod((current) => ({
-                        ...current,
-                        session: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    <option value="2026/2027">2026/2027</option>
-                    <option value="2027/2028">2027/2028</option>
-                    <option value="2028/2029">2028/2029</option>
-                  </select>
-                </div>
-              </div>
-
-              <Button onClick={handleEnrollSelectedCourses} className="w-full" disabled={savingEnrollments}>
-                {savingEnrollments ? 'Saving enrollment...' : 'Enroll selected courses'}
-              </Button>
-            </Card>
-          </aside>
+          <Button onClick={() => setLocation('/explore')}><Compass className="mr-2 h-4 w-4" /> Explore courses</Button>
         </div>
 
-        <div className="mt-8">
-          <Button variant="ghost" size="sm" onClick={() => setLocation('/learning')}>
-            Continue to learning
-          </Button>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="p-5"><p className="text-sm text-muted-foreground">Courses in progress</p><p className="mt-2 text-3xl font-bold">{myLearning.length}</p></Card>
+          <Card className="p-5"><p className="text-sm text-muted-foreground">Your progress</p><p className="mt-2 text-3xl font-bold">{overallProgress}%</p></Card>
+          <Card className="p-5"><p className="text-sm text-muted-foreground">Areas to review</p><p className="mt-2 text-3xl font-bold">{weakTopics.length}</p></Card>
         </div>
+
+        <section>
+          <div className="mb-4 flex items-center justify-between"><div><h2 className="text-2xl font-bold">Continue Learning</h2><p className="text-sm text-muted-foreground">Your active courses and progress.</p></div><Button variant="ghost" onClick={() => setLocation('/learning')}>My Learning <ArrowRight className="ml-2 h-4 w-4" /></Button></div>
+          {myLearning.length === 0 ? <Card className="p-6 text-sm text-muted-foreground">You have no active courses yet. Explore the catalog to start learning.</Card> : <div className="grid gap-4 md:grid-cols-2">{myLearning.map((course) => { const percent = course.total ? Math.round((course.completed / course.total) * 100) : 0; return <Card key={course.id} className="p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{course.courseTitle}</h3><p className="text-sm text-muted-foreground">Facilitator: {course.lecturerName}</p></div><Badge variant="outline">{percent}%</Badge></div><Progress value={percent} className="mt-4" /><Button className="mt-4" variant="outline" onClick={() => setLocation(`/learning/${course.id}`)}>{course.completed > 0 ? 'Continue Learning' : 'Start Learning'}</Button></Card>; })}</div>}
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="p-5"><div className="mb-4 flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Recommended For You</h2></div>{recommendations.length === 0 ? <p className="text-sm text-muted-foreground">Explore more courses to receive new recommendations.</p> : <div className="space-y-3">{recommendations.map((course) => <button key={course.id} className="w-full rounded-md border border-border p-3 text-left hover:bg-secondary/40" onClick={() => setLocation(`/course/${course.id}`)}><p className="font-medium">{course.courseTitle}</p><p className="text-sm text-muted-foreground">{course.category || 'General'} · {course.level || 'Beginner'}</p></button>)}</div>}</Card>
+          <Card className="p-5"><div className="mb-4 flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Weak Topics / Areas to Review</h2></div>{weakTopics.length === 0 ? <p className="text-sm text-muted-foreground">Complete a quiz to identify topics that need review.</p> : <div className="flex flex-wrap gap-2">{weakTopics.map((topic) => <Badge key={topic.topic} variant="destructive">{topic.topic} · {topic.percentage}%</Badge>)}</div>}<Button className="mt-4" variant="outline" onClick={() => setLocation('/performance')}>View performance</Button></Card>
+        </div>
+
+        <Card className="p-5"><h2 className="text-lg font-semibold">Recent Learning Activity</h2>{recentActivity.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Your recent course activity will appear here.</p> : <div className="mt-3 space-y-2">{recentActivity.map((course) => <div key={course.id} className="flex items-center justify-between border-b border-border py-2 text-sm"><span>{course.courseTitle}</span><span className="text-muted-foreground">{course.completed} lessons completed</span></div>)}</div>}</Card>
       </div>
     </MainLayout>
   );

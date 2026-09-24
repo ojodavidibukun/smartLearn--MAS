@@ -91,10 +91,10 @@ export default function signUp(){
                 <aside className="hidden md:flex items-center justify-center p-12 bg-gradient-to-br from-primary/10 to-accent/5">
                     <div className="max-w-sm">
                         <div className="w-20 h-20 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center mb-6 shadow-md">
-                            <span className="text-white font-bold text-2xl">SL</span>
+                            <span className="text-white font-bold text-2xl">YL</span>
                         </div>
-                        <h2 className="text-3xl font-bold mb-3">Create your SmartLearn account</h2>
-                        <p className="text-muted-foreground">Join students and educators using SmartLearn to improve learning outcomes.</p>
+                        <h2 className="text-3xl font-bold mb-3">Create your YouLearn account</h2>
+                        <p className="text-muted-foreground">Join learners and facilitators building better learning experiences on YouLearn.</p>
                     </div>
                 </aside>
 
@@ -162,7 +162,7 @@ export default function signUp(){
                                         className={`flex-1 px-4 py-2 rounded-md border ${role === 'lecturer' ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent'}`}
                                         onClick={() => setRole('lecturer')}
                                     >
-                                        Lecturer
+                                        Facilitator
                                     </button>
                                 </div>
 

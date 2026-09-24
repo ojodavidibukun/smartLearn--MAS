@@ -3,6 +3,7 @@ import { ArrowRight, CheckCircle2, Video } from 'lucide-react';
 import { collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import MainLayout from '@/layouts/MainLayout';
 import LecturerLearning from './LecturerLearning';
+import { useRoute } from 'wouter';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/firebase/config';
@@ -10,7 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { getQuizAttempt, getStudentProgress, getStudentQuizAttempts, setLessonCompleted, startQuizAttempt, subscribeLessons, subscribeQuizzes, type Course, type CourseQuiz, type Lesson, type QuizAttempt, updateQuizAttempt } from '@/lib/courses';
+import { getActiveEnrollments, getFacilitatorName, getQuizAttempt, getStudentProgress, getStudentQuizAttempts, normalizeCourse, setLessonCompleted, startQuizAttempt, subscribeLessons, subscribeQuizzes, type Course, type CourseQuiz, type Lesson, type QuizAttempt, updateQuizAttempt } from '@/lib/courses';
+import { createUserNotification } from '@/lib/notifications';
 
 type Enrollment = { courseId?: string };
 type Material = { kind: 'lesson' | 'video' | 'quiz'; course: Course; lesson?: Lesson; quiz?: CourseQuiz };
@@ -25,6 +27,8 @@ function youtubeEmbed(url?: string) {
 }
 
 export default function Learning() {
+  const [, courseParams] = useRoute('/learning/:courseId');
+  const routeCourseId = (courseParams as any)?.courseId as string | undefined;
   const { profile, loading: profileLoading } = useUserProfile();
   const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
@@ -46,22 +50,25 @@ export default function Learning() {
     if (!user?.uid) return;
     let active = true;
     getStudentQuizAttempts(user.uid).then((items) => { if (active) setAttempts(items); }).catch(() => { if (active) setAttempts([]); });
-    getDocs(query(collection(db, 'enrollments'), where('studentId', '==', user.uid))).then(async (snapshot) => {
-      const ids = snapshot.docs.map((item) => (item.data() as Enrollment).courseId).filter(Boolean) as string[];
+    getActiveEnrollments(user.uid).then(async (enrollments) => {
+      const ids = enrollments.map((item) => (item as Enrollment).courseId).filter(Boolean) as string[];
       const loaded = (await Promise.all(ids.map(async (id) => {
         const item = await getDocs(query(collection(db, 'courses'), where('__name__', '==', id)));
         const match = item.docs[0];
-        return match ? ({ id: match.id, ...(match.data() as any) } as Course) : null;
+        return match ? normalizeCourse(match.data(), match.id) : null;
       }))).filter(Boolean) as Course[];
       if (!active) return;
-      setCourses(loaded);
-      await Promise.all(loaded.map(async (course) => {
+      const activeCourses = loaded.filter((course) => course.isArchived !== true && course.status !== 'archived');
+      const namedCourses = await Promise.all(activeCourses.map(async (course) => ({ ...course, lecturerName: await getFacilitatorName(course) })));
+      setCourses(namedCourses);
+      if (routeCourseId && namedCourses.some((course) => course.id === routeCourseId)) setCourseFilter(routeCourseId);
+      await Promise.all(namedCourses.map(async (course) => {
         const current = await getStudentProgress(course.id!, user.uid);
         if (active) setProgress((value) => ({ ...value, [course.id!]: Array.isArray((current as any).completedLessons) ? (current as any).completedLessons : [] }));
       }));
     }).catch(() => { if (active) setCourses([]); });
     return () => { active = false; };
-  }, [user?.uid]);
+  }, [user?.uid, routeCourseId]);
 
   useEffect(() => {
     const unsubscribers = courses.flatMap((course) => course.id ? [
@@ -155,6 +162,7 @@ export default function Learning() {
       const score = Math.round((correct / activeQuiz.questions.length) * 100);
       const submittedAnswers = activeQuiz.questions.map((_, index) => typeof answers[index] === 'number' ? answers[index] : -1);
       await updateQuizAttempt(activeAttempt.id, { status: 'submitted', score, answers: submittedAnswers, topicScores, submittedAt: serverTimestamp(), completedAt: serverTimestamp() });
+      await createUserNotification(user.uid, 'student', 'Quiz result available', `Your result for ${activeQuiz.title} is ${score}%.`, '/performance', activeMaterial.course.id, score < 60 ? 'warning' : 'success');
       setAttempts((items) => items.map((attempt) => attempt.id === activeAttempt.id ? { ...attempt, status: 'submitted', score, answers: submittedAnswers, topicScores } : attempt));
       setSubmittedScore(score);
       if (automatic) setTimeUpMessage('Time is up. Your quiz has been submitted automatically.');
@@ -176,7 +184,7 @@ export default function Learning() {
   if (profile?.role === 'lecturer') return <LecturerLearning />;
 
   return <MainLayout><div className="container py-8 space-y-8">
-    <div><h1 className="text-3xl font-bold">Learning</h1><p className="text-muted-foreground">Study published materials from your enrolled courses.</p></div>
+    <div><p className="text-sm font-medium uppercase tracking-wide text-primary">{routeCourseId ? 'Course Learning Hub' : 'My Learning'}</p><h1 className="text-3xl font-bold">{routeCourseId ? (courses.find((course) => course.id === routeCourseId)?.courseTitle || 'Course learning') : 'Learning'}</h1><p className="text-muted-foreground">{routeCourseId ? `Facilitator: ${courses.find((course) => course.id === routeCourseId)?.lecturerName || ''}` : 'Study published materials from your enrolled courses.'}</p></div>
     <Card className="p-5"><div className="grid gap-3 md:grid-cols-3">
       <select value={courseFilter} onChange={(event) => setCourseFilter(event.target.value)} className="rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="all">All courses</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.courseTitle}</option>)}</select>
       <select value={topicFilter} onChange={(event) => setTopicFilter(event.target.value)} className="rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="all">All topics</option>{topics.map((topic) => <option key={topic} value={topic}>{topic}</option>)}</select>

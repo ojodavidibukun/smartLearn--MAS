@@ -7,7 +7,8 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useLogout } from "../hooks/useLogout";
 import { useAuth } from '@/contexts/AuthContext';
-import { markStudentNotificationRead, subscribeStudentAnnouncements } from '@/lib/notifications';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { markAllNotificationsRead, markNotificationRead, subscribeUserNotifications } from '@/lib/notifications';
 
 
 
@@ -19,6 +20,7 @@ interface MainLayoutProps {
 export default function MainLayout({ children, showNav = true }: MainLayoutProps) {
   const { logout } = useLogout();
   const { user } = useAuth();
+  const { profile } = useUserProfile();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<import('@/types').Notification[]>([]);
@@ -30,19 +32,27 @@ export default function MainLayout({ children, showNav = true }: MainLayoutProps
       return;
     }
 
-    const unsubscribe = subscribeStudentAnnouncements(user.uid, setNotifications, () => setNotifications([]));
+    const unsubscribe = subscribeUserNotifications(user.uid, setNotifications, () => setNotifications([]));
     return unsubscribe;
   }, [user]);
 
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
 
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard' },
-    { label: 'Learning', href: '/learning' },
-    { label: 'Performance', href: '/performance' },
-    { label: 'Agents', href: '/agents' },
-  ];
+  const isFacilitator = profile?.role === 'lecturer';
+  const navItems = isFacilitator
+    ? [
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'My Courses', href: '/lecturer/courses' },
+        { label: 'Create Course', href: '/lecturer/create-course' },
+      ]
+    : [
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'Explore', href: '/explore' },
+        { label: 'My Learning', href: '/learning' },
+        { label: 'Performance', href: '/performance' },
+        { label: 'Agents', href: '/agents' },
+      ];
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -52,9 +62,9 @@ export default function MainLayout({ children, showNav = true }: MainLayoutProps
           {/* Logo */}
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setLocation('/')}>
             <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">SL</span>
+              <span className="text-white font-bold text-sm">YL</span>
             </div>
-            <span className="font-semibold text-lg hidden sm:inline">SmartLearn</span>
+            <span className="font-semibold text-lg hidden sm:inline">YouLearn</span>
           </div>
 
           {/* Desktop Navigation */}
@@ -94,7 +104,7 @@ export default function MainLayout({ children, showNav = true }: MainLayoutProps
                   <div className="absolute right-16 top-14 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-border bg-card p-3 shadow-lg">
                     <div className="mb-2 flex items-center justify-between">
                       <h2 className="font-semibold">Notifications</h2>
-                      <span className="text-xs text-muted-foreground">{unreadCount} unread</span>
+                      <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">{unreadCount} unread</span>{unreadCount > 0 && <button className="text-xs text-primary underline" onClick={() => user && markAllNotificationsRead(user.uid, notifications)}>Mark all as read</button>}</div>
                     </div>
                     {notifications.length === 0 ? (
                       <p className="py-4 text-sm text-muted-foreground">No notifications yet.</p>
@@ -107,7 +117,7 @@ export default function MainLayout({ children, showNav = true }: MainLayoutProps
                             className={`w-full rounded-md border p-3 text-left ${notification.read ? 'border-border bg-background' : 'border-primary/30 bg-primary/5'}`}
                             onClick={() => {
                               if (user && !notification.read) {
-                                markStudentNotificationRead(user.uid, notification.id);
+                                markNotificationRead(notification.id);
                                 setNotifications((current) => current.map((item) =>
                                   item.id === notification.id ? { ...item, read: true } : item,
                                 ));
@@ -182,9 +192,9 @@ export default function MainLayout({ children, showNav = true }: MainLayoutProps
         <div className="container py-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             <div>
-              <h3 className="font-semibold mb-4">SmartLearn MAS</h3>
+              <h3 className="font-semibold mb-4">YouLearn</h3>
               <p className="text-sm text-muted-foreground">
-                Multi-Agent Personalized E-Learning System
+                Personalized E-Learning System
               </p>
             </div>
             <div>
@@ -234,7 +244,7 @@ export default function MainLayout({ children, showNav = true }: MainLayoutProps
             </div>
           </div>
           <div className="border-t border-border pt-8 flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
-            <p>&copy; 2026 SmartLearn MAS. Academic Project - Agent-Based Technology Course</p>
+            <p>&copy; 2026 YouLearn. Personalized learning for everyone.</p>
             <p>Built with React, TypeScript, and Tailwind CSS</p>
           </div>
         </div>

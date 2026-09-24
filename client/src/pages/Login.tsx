@@ -71,10 +71,10 @@ export default function Login() {
         <section className="hidden md:flex items-center justify-center p-12 bg-gradient-to-br from-primary/10 to-accent/5">
           <div className="max-w-md">
             <div className="w-20 h-20 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center mb-6 shadow-md">
-              <span className="text-white font-bold text-2xl">SL</span>
+              <span className="text-white font-bold text-2xl">YL</span>
             </div>
-            <h2 className="text-3xl font-bold mb-3">Welcome back to SmartLearn</h2>
-            <p className="text-muted-foreground mb-6">A modern learning environment built for educators and students. Sign in with your email.</p>
+            <h2 className="text-3xl font-bold mb-3">Welcome back to YouLearn</h2>
+            <p className="text-muted-foreground mb-6">A public learning platform for students and facilitators. Sign in with your email.</p>
 
             <div className="rounded-lg p-4 bg-card/60 border">
               <p className="text-sm">Explore courses, track progress, and get tailored recommendations.</p>
@@ -86,8 +86,8 @@ export default function Login() {
         <section className="flex items-center justify-center p-6">
           <div className="w-full max-w-md">
             <div className="text-center mb-6 md:mb-8">
-              <h1 className="text-2xl font-bold">Sign in to SmartLearn</h1>
-              <p className="text-sm text-muted-foreground mt-1">Secure access for students and educators</p>
+              <h1 className="text-2xl font-bold">Sign in to YouLearn</h1>
+              <p className="text-sm text-muted-foreground mt-1">Secure access for students and facilitators</p>
             </div>
 
             <div className="space-y-4">
@@ -132,7 +132,7 @@ export default function Login() {
             </div>
 
             <div className="mt-6 text-center text-sm text-muted-foreground">
-              <p>&copy; 2026 SmartLearn. All rights reserved.</p>
+              <p>&copy; 2026 YouLearn. All rights reserved.</p>
             </div>
           </div>
         </section>

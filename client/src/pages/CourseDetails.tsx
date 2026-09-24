@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import MainLayout from '@/layouts/MainLayout';
 import { useLocation, useRoute } from 'wouter';
-import { getCourseById, getLessons, getStudentProgress, setLessonCompleted } from '@/lib/courses';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '@/firebase/config';
+import { getCourseById, getFacilitatorName, getLessons, getQuizzes, getStudentProgress, setEnrollmentStatus, setLessonCompleted } from '@/lib/courses';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,10 +16,12 @@ export default function CourseDetails() {
 
   const [course, setCourse] = useState<any>(null);
   const [lessons, setLessons] = useState<any[]>([]);
+  const [quizzes, setQuizzes] = useState<any[]>([]);
   const [progress, setProgress] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [enrollmentId, setEnrollmentId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -29,13 +33,21 @@ export default function CourseDetails() {
           setLoading(false);
           return;
         }
-        setCourse(c);
+        setCourse({ ...c, lecturerName: await getFacilitatorName(c) });
         let ls = await getLessons(courseId, user?.uid !== c.lecturerId);
         ls.sort((a, b) => (a.order || 0) - (b.order || 0));
         setLessons(ls);
+        setQuizzes(await getQuizzes(courseId, true));
         if (user?.uid) {
-          const p = await getStudentProgress(courseId, user.uid);
-          setProgress(Array.isArray((p as any).completedLessons) ? (p as any).completedLessons : []);
+          const enrollmentSnapshot = await getDocs(query(collection(db, 'enrollments'), where('studentId', '==', user.uid), where('courseId', '==', courseId)));
+          const activeEnrollment = enrollmentSnapshot.docs.find((item) => item.data().status !== 'unenrolled' && item.data().status !== 'archived');
+          setEnrollmentId(activeEnrollment?.id || null);
+          if (activeEnrollment || user.uid === c.lecturerId) {
+            const p = await getStudentProgress(courseId, user.uid);
+            setProgress(Array.isArray((p as any).completedLessons) ? (p as any).completedLessons : []);
+          } else {
+            setProgress([]);
+          }
         }
       } catch (e: any) {
         setError(e?.message || String(e));
@@ -54,6 +66,13 @@ export default function CourseDetails() {
     setProgress((p) => (isCompleted ? p.filter((id) => id !== lessonId) : [...p, lessonId]));
   };
 
+  const unenroll = async () => {
+    if (!enrollmentId || !window.confirm('Are you sure you want to unenroll from this course?')) return;
+    await setEnrollmentStatus(enrollmentId, 'unenrolled');
+    setEnrollmentId(null);
+    setLocation('/dashboard');
+  };
+
   if (loading) return <MainLayout><p className="container py-8">Loading...</p></MainLayout>;
   if (error) return <MainLayout><p className="container py-8 text-destructive">{error}</p></MainLayout>;
 
@@ -67,18 +86,26 @@ export default function CourseDetails() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">{course.courseTitle}</h1>
-            <p className="text-muted-foreground">{course.courseCode} • Lecturer: {course.lecturerName}</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-sm text-muted-foreground">
+              <span>Facilitator: {course.lecturerName}</span>
+              {course.category && <span>• {course.category}</span>}
+              {course.level && <span>• {course.level}</span>}
+            </div>
           </div>
           <div>
             <Button variant="ghost" onClick={() => setLocation('/dashboard')}>Back to dashboard</Button>
+            <Button className="ml-2" onClick={() => setLocation(`/learning/${courseId}`)}>{progress.length > 0 ? 'Continue Learning' : 'Start Learning'}</Button>
+            {enrollmentId && <Button className="ml-2" variant="outline" onClick={unenroll}>Unenroll</Button>}
           </div>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           <section className="lg:col-span-2">
             <Card className="p-6 mb-4">
-              <h3 className="font-semibold mb-2">Course description</h3>
+              <h3 className="font-semibold mb-2">About this course</h3>
               <p className="text-sm text-muted-foreground">{course.description || 'No description provided.'}</p>
+              {course.category && <p className="mt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Topics:</span> {course.category}</p>}
+              <p className="mt-2 text-sm text-muted-foreground">{lessons.length} lessons · {quizzes.length} quizzes</p>
             </Card>
 
             <Card className="p-6">

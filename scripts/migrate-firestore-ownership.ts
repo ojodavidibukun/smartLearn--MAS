@@ -23,8 +23,24 @@ type Enrollment = {
   courseId?: string;
 };
 
+type LegacyCourseEntry = {
+  code?: string;
+  title?: string;
+};
+
 function courseKey(lecturerId: string, courseCode: string) {
   return `${lecturerId}\u0000${courseCode}`;
+}
+
+function normalizeLegacyCourseEntry(course: LegacyCourseEntry | null | undefined) {
+  if (!course) return null;
+
+  const code = String(course.code ?? '').trim().toUpperCase();
+  const title = String(course.title ?? '').trim();
+
+  if (!code || !title) return null;
+
+  return { code, title };
 }
 
 async function main() {
@@ -43,10 +59,51 @@ async function main() {
     coursesByKey.set(key, matches);
   }
 
+  const usersSnapshot = await db.collection('users').get();
+  const problems: string[] = [];
+  const legacyCourseBackfills: Array<{
+    lecturerId: string;
+    lecturerName: string;
+    courseCode: string;
+    courseTitle: string;
+  }> = [];
+  const seenLegacyCourseKeys = new Set<string>();
+
+  for (const userDocument of usersSnapshot.docs) {
+    const profile = userDocument.data() as { fullName?: string; offeredCourses?: LegacyCourseEntry[] };
+    const offeredCourses = Array.isArray(profile.offeredCourses) ? profile.offeredCourses : [];
+    if (!offeredCourses.length) continue;
+
+    for (const course of offeredCourses) {
+      const normalized = normalizeLegacyCourseEntry(course);
+      if (!normalized) {
+        problems.push(`users/${userDocument.id}: invalid offeredCourses entry`);
+        continue;
+      }
+
+      const key = courseKey(userDocument.id, normalized.code);
+      if (seenLegacyCourseKeys.has(key)) continue;
+      seenLegacyCourseKeys.add(key);
+
+      const matches = coursesByKey.get(key) || [];
+      const hasEquivalentTitle = matches.some(
+        (existing) => existing.courseTitle && existing.courseTitle.trim().toLowerCase() === normalized.title.toLowerCase(),
+      );
+
+      if (hasEquivalentTitle) continue;
+
+      legacyCourseBackfills.push({
+        lecturerId: userDocument.id,
+        lecturerName: typeof profile.fullName === 'string' && profile.fullName.trim() ? profile.fullName.trim() : 'Lecturer',
+        courseCode: normalized.code,
+        courseTitle: normalized.title,
+      });
+    }
+  }
+
   const enrollmentSnapshot = await db.collection('enrollments').get();
   const progressSnapshot = await db.collection('courseProgress').get();
   const updates: Array<{ path: string; data: Record<string, unknown> }> = [];
-  const problems: string[] = [];
 
   for (const document of enrollmentSnapshot.docs) {
     const enrollment = { id: document.id, ...(document.data() as Omit<Enrollment, 'id'>) };
@@ -91,9 +148,12 @@ async function main() {
     });
   }
 
-  console.log(`${applyChanges ? 'Applying' : 'Dry run'} ${updates.length} update(s).`);
+  console.log(`${applyChanges ? 'Applying' : 'Dry run'} ${updates.length + legacyCourseBackfills.length} migration action(s).`);
   for (const update of updates) {
     console.log(`  ${update.path}: ${JSON.stringify(update.data)}`);
+  }
+  for (const course of legacyCourseBackfills) {
+    console.log(`  courses/<new-id>: ${JSON.stringify({ ...course, description: '' })}`);
   }
 
   if (problems.length) {
@@ -115,6 +175,20 @@ async function main() {
       }, { merge: true });
     }
     await batch.commit();
+  }
+
+  for (const course of legacyCourseBackfills) {
+    const ref = db.collection('courses').doc();
+    await ref.set({
+      lecturerId: course.lecturerId,
+      lecturerName: course.lecturerName,
+      courseCode: course.courseCode,
+      courseTitle: course.courseTitle,
+      description: '',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`  created ${ref.path}`);
   }
 
   console.log('Migration complete. Records needing manual review were not changed.');
